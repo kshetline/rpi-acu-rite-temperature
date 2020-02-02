@@ -2,9 +2,9 @@
 
 # compiled output
 /dist
-/dist-server
-/tmp
-/out-tsc
+*.o
+*.gch
+ar-signal-monitor-test
 
 # dependencies
 /node_modules
@@ -33,10 +33,6 @@
 npm-debug.log
 testem.log
 /typings
-
-# e2e
-/e2e/*.js
-/e2e/*.map
 
 # System Files
 .DS_Store
