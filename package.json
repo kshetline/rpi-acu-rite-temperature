@@ -4,10 +4,13 @@
   "description": "Library for reading Acu-Rite temperature/humidity sensor with Raspberry Pi via 433Mhz receiver",
   "main": "index.js",
   "dependencies": {
-    "rpi-gpio": "^2.1.5",
-    "ts-node": "^8.6.2"
+    "bindings": "^1.5.0",
+    "node-addon-api": "^2.0.0"
   },
   "devDependencies": {
+    "@types/bindings": "^1.3.0",
+    "@types/node": "^13.7.0",
+    "ts-node": "^8.6.2",
     "typescript": "^3.7.5"
   },
   "scripts": {
@@ -28,5 +31,6 @@
   "bugs": {
     "url": "https://github.com/kshetline/rpi-acu-rite-433mhz/issues"
   },
-  "homepage": "https://github.com/kshetline/rpi-acu-rite-433mhz#readme"
+  "homepage": "https://github.com/kshetline/rpi-acu-rite-433mhz#readme",
+  "gypfile": true
 }

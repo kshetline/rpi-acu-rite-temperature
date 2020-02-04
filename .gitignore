@@ -2,8 +2,12 @@
 
 # compiled output
 /dist
+/build
 *.o
 *.gch
+*.d.ts
+*.js
+*.js.map
 ar-signal-monitor-test
 
 # dependencies

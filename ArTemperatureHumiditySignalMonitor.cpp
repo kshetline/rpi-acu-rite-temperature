@@ -112,6 +112,9 @@ ARTHSM::~ArTemperatureHumiditySignalMonitor() {
   if (callbackIndex >= 0)
     monitors[callbackIndex] = NULL;
 
+  if (dataPin >= 0)
+    pinMode(dataPin, INPUT); // stop callbacks
+
   delete dispatchLock;
   delete signalLock;
 }
@@ -130,10 +133,10 @@ void ARTHSM::init(int dataPin, PinSystem pinSys) {
     int setUpResult;
 
     switch (pinSystem) {
-      case PinSystem::VIRTUAL: setUpResult = wiringPiSetup(); break;
       case PinSystem::GPIO:    setUpResult = wiringPiSetupGpio(); break;
       case PinSystem::PHYS:    setUpResult = wiringPiSetupPhys(); break;
       case PinSystem::SYS:     setUpResult = wiringPiSetupSys(); break;
+      default:                 setUpResult = wiringPiSetup(); break;
     }
 
     if (setUpResult < 0)

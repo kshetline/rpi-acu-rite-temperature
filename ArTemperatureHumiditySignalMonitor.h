@@ -47,7 +47,7 @@ class ArTemperatureHumiditySignalMonitor {
 
     int callbackIndex = -1;
     std::map<int, ClientCallback> clientCallbacks;
-    int dataPin;
+    int dataPin = -1;
     bool debugOutput = false;
     std::mutex *dispatchLock;
     std::map<char, SensorData> lastSensorData;
