@@ -43,57 +43,63 @@ using namespace std;
 #define ARTHSM ArTemperatureHumiditySignalMonitor
 
 // Signal timings in microseconds
-const int MESSAGE_LENGTH =   39052; // 56 data bits plus short sync high, long sync low
+static const int MESSAGE_LENGTH =   39052; // 56 data bits plus short sync high, long sync low
 // 0 bit is short high followed by long low, 1 bit is long high, short low.
-const int SHORT_PULSE =        210;
-const int LONG_PULSE =         401;
-const int BIT_LENGTH =         SHORT_PULSE + LONG_PULSE;
-const int PRE_LONG_SYNC =      207;
-const int LONG_SYNC_PULSE =   2205;
-const int SHORT_SYNC_PULSE =   606;
-const int TOLERANCE =          100;
-const int LONG_SYNC_TOL =      250;
+static const int SHORT_PULSE =        210;
+static const int LONG_PULSE =         401;
+static const int BIT_LENGTH =         SHORT_PULSE + LONG_PULSE;
+static const int PRE_LONG_SYNC =      207;
+static const int LONG_SYNC_PULSE =   2205;
+static const int SHORT_SYNC_PULSE =   606;
+static const int TOLERANCE =          100;
+static const int LONG_SYNC_TOL =      250;
 
-const int TOTAL_BITS =            56;
-const int MIN_TRANSITIONS =       TOTAL_BITS * 2;
-const int IDEAL_TRANSITIONS =     MIN_TRANSITIONS + 2; // short sync high, long sync low
-const int MAX_TRANSITONS =        IDEAL_TRANSITIONS + 4; // small allowance for spurious noises
+static const int TOTAL_BITS =            56;
+static const int MIN_TRANSITIONS =       TOTAL_BITS * 2;
+static const int IDEAL_TRANSITIONS =     MIN_TRANSITIONS + 2; // short sync high, long sync low
+static const int MAX_TRANSITONS =        IDEAL_TRANSITIONS + 4; // small allowance for spurious noises
 
-const int MIN_MESSAGE_LENGTH       = TOTAL_BITS * (SHORT_PULSE + LONG_PULSE) - TOLERANCE;
+static const int MIN_MESSAGE_LENGTH       = TOTAL_BITS * (SHORT_PULSE + LONG_PULSE) - TOLERANCE;
 const int MAX_MESSAGE_LENGTH       = MESSAGE_LENGTH + TOLERANCE;
 
-const int CHANNEL_FIRST_BIT =      0;
-const int CHANNEL_LAST_BIT =       1;
+static const int CHANNEL_FIRST_BIT =      0;
+static const int CHANNEL_LAST_BIT =       1;
 
-const int MISC_DATA_1_FIRST_BIT =  2;
-const int MISC_DATA_1_LAST_BIT =  15;
+static const int MISC_DATA_1_FIRST_BIT =  2;
+static const int MISC_DATA_1_LAST_BIT =  15;
 
-const int BATTERY_LOW_BIT =       16;
+static const int BATTERY_LOW_BIT =       16;
 
-const int MISC_DATA_2_FIRST_BIT = 17;
+static const int MISC_DATA_2_FIRST_BIT = 17;
 const int MISC_DATA_2_LAST_BIT =  23;
 
-const int HUMIDITY_FIRST_BIT =    25;
-const int HUMIDITY_LAST_BIT =     31;
+static const int HUMIDITY_FIRST_BIT =    25;
+static const int HUMIDITY_LAST_BIT =     31;
 
-const int MISC_DATA_3_FIRST_BIT = 33;
-const int MISC_DATA_3_LAST_BIT =  35;
+static const int MISC_DATA_3_FIRST_BIT = 33;
+static const int MISC_DATA_3_LAST_BIT =  35;
 
-const int TEMPERATURE_FIRST_BIT = 36;
-const int TEMPERATURE_LAST_BIT =  47;
+static const int TEMPERATURE_FIRST_BIT = 36;
+static const int TEMPERATURE_LAST_BIT =  47;
 
-const int MAX_MONITORS = 10;
+static const int MAX_MONITORS = 10;
 
-const int REPEAT_SUPRESSION    =  60; // 1 minute
-const int REUSE_OLD_DATA_LIMIT = 600; // 10 minutes
- 
+static const int REPEAT_SUPRESSION    =  60; // 1 minute
+static const int REUSE_OLD_DATA_LIMIT = 600; // 10 minutes
+
 bool ARTHSM::initialSetupDone = false;
 ARTHSM::PinSystem ARTHSM::pinSystem = (ARTHSM::PinSystem) -1;
+int ARTHSM::callbackIndex = 0;
 
-ARTHSM* monitors[MAX_MONITORS] = { NULL };
+ARTHSM::PinSystem ARTHSM::getPinSystem() {
+  return pinSystem;
+}
+
+static ARTHSM* monitors[MAX_MONITORS] = { nullptr };
+static mutex signalLocks[MAX_MONITORS];
 extern void (*smCallbacks[MAX_MONITORS])();
 
-int mod(int x, int y) {
+static int mod(int x, int y) {
   int m = x % y;
 
   if ((m < 0 && y > 0) || (m > 0 && y < 0)) {
@@ -105,18 +111,19 @@ int mod(int x, int y) {
 
 ARTHSM::ArTemperatureHumiditySignalMonitor() {
   dispatchLock = new mutex();
-  signalLock = new mutex();
 }
 
 ARTHSM::~ArTemperatureHumiditySignalMonitor() {
+  signalLocks[callbackIndex].lock();
+
   if (callbackIndex >= 0)
-    monitors[callbackIndex] = NULL;
+    monitors[callbackIndex] = nullptr;
 
   if (dataPin >= 0)
     pinMode(dataPin, INPUT); // stop callbacks
 
   delete dispatchLock;
-  delete signalLock;
+  signalLocks[callbackIndex].unlock();
 }
 
 void ARTHSM::init(int dataPin) {
@@ -146,7 +153,7 @@ void ARTHSM::init(int dataPin, PinSystem pinSys) {
   }
 
   for (int i = 0; i < MAX_MONITORS; ++i) {
-    if (monitors[i] == NULL) {
+    if (monitors[i] == nullptr) {
       callbackIndex = i;
       monitors[i] = this;
       break;
@@ -160,15 +167,24 @@ void ARTHSM::init(int dataPin, PinSystem pinSys) {
   wiringPiISR(dataPin, INT_EDGE_BOTH, smCallbacks[callbackIndex]);
 }
 
-void ARTHSM::signalHasChanged(ARTHSM *sm) {
-  sm->signalHasChangedAux();
+int ARTHSM::getDataPin() {
+  return dataPin;
 }
 
-void ARTHSM::signalHasChangedAux() {
+void ARTHSM::signalHasChanged(int index) {
   unsigned long now = micros();
+  ARTHSM *sm;
 
-  signalLock->lock();
+  signalLocks[index].lock();
+  sm = monitors[index];
 
+  if (sm != nullptr)
+    sm->signalHasChangedAux(now);
+  else
+    signalLocks[index].unlock();
+}
+
+void ARTHSM::signalHasChangedAux(unsigned long now) {
   unsigned short duration = min(now - lastSignalChange, 10000ul);
 
   lastSignalChange = now;
@@ -194,7 +210,7 @@ void ARTHSM::signalHasChangedAux() {
     }
   }
 
-  signalLock->unlock();
+  signalLocks[callbackIndex].unlock();
 }
 
 void ARTHSM::enableDebugOutput(bool state) {
@@ -225,7 +241,7 @@ string getTimestamp() {
   char buf[32];
   struct timeval time;
 
-  gettimeofday(&time, NULL);
+  gettimeofday(&time, nullptr);
   time_t sec = time.tv_sec;
   strftime(buf, 32, "%R:%S.", localtime(&sec));
   sprintf(&buf[9], "%03ld", time.tv_usec / 1000);
@@ -495,7 +511,7 @@ void ARTHSM::tryToCleanUpSignal() {
 }
 
 int ARTHSM::addListener(VoidFunctionPtr callback) {
-  return addListener(callback, NULL);
+  return addListener(callback, nullptr);
 }
 
 int ARTHSM::addListener(VoidFunctionPtr callback, void *data) {
@@ -629,16 +645,16 @@ bool ARTHSM::SensorData::hasCloseValues(const SensorData &sd) const {
          abs(rawTemp - sd.rawTemp) < 30;
 }
 
-void smCallback0() { ARTHSM::signalHasChanged(monitors[0]); }
-void smCallback1() { ARTHSM::signalHasChanged(monitors[1]); }
-void smCallback2() { ARTHSM::signalHasChanged(monitors[2]); }
-void smCallback3() { ARTHSM::signalHasChanged(monitors[3]); }
-void smCallback4() { ARTHSM::signalHasChanged(monitors[4]); }
-void smCallback5() { ARTHSM::signalHasChanged(monitors[5]); }
-void smCallback6() { ARTHSM::signalHasChanged(monitors[6]); }
-void smCallback7() { ARTHSM::signalHasChanged(monitors[7]); }
-void smCallback8() { ARTHSM::signalHasChanged(monitors[8]); }
-void smCallback9() { ARTHSM::signalHasChanged(monitors[9]); }
+static void smCallback0() { ARTHSM::signalHasChanged(0); }
+static void smCallback1() { ARTHSM::signalHasChanged(1); }
+static void smCallback2() { ARTHSM::signalHasChanged(2); }
+static void smCallback3() { ARTHSM::signalHasChanged(3); }
+static void smCallback4() { ARTHSM::signalHasChanged(4); }
+static void smCallback5() { ARTHSM::signalHasChanged(5); }
+static void smCallback6() { ARTHSM::signalHasChanged(6); }
+static void smCallback7() { ARTHSM::signalHasChanged(7); }
+static void smCallback8() { ARTHSM::signalHasChanged(8); }
+static void smCallback9() { ARTHSM::signalHasChanged(9); }
 
 void (*smCallbacks[MAX_MONITORS])() = {
   smCallback0, smCallback1, smCallback2, smCallback3, smCallback4,

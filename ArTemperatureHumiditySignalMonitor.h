@@ -6,7 +6,7 @@
 #include <string>
 #include <utility>
 
-const int RING_BUFFER_SIZE = 512;
+static const int RING_BUFFER_SIZE = 512;
 
 #undef COLLECT_STATS
 #undef SHOW_RAW_DATA
@@ -15,8 +15,7 @@ const int RING_BUFFER_SIZE = 512;
 class ArTemperatureHumiditySignalMonitor {
   public:
     enum PinSystem { VIRTUAL, SYS, GPIO, PHYS };
-
-    static PinSystem pinSystem;
+    static PinSystem getPinSystem();
 
     class SensorData {
       public:
@@ -38,6 +37,8 @@ class ArTemperatureHumiditySignalMonitor {
 
    private:
     static bool initialSetupDone;
+    static PinSystem pinSystem;
+    static int callbackIndex;
 
     enum DataIntegrity { BAD_BITS, BAD_PARITY, BAD_CHECKSUM, GOOD };
 
@@ -45,7 +46,6 @@ class ArTemperatureHumiditySignalMonitor {
     typedef void *VoidPtr;
     typedef std::pair<VoidFunctionPtr, VoidPtr> ClientCallback;
 
-    int callbackIndex = -1;
     std::map<int, ClientCallback> clientCallbacks;
     int dataPin = -1;
     bool debugOutput = false;
@@ -54,7 +54,6 @@ class ArTemperatureHumiditySignalMonitor {
     unsigned long lastSignalChange = 0;
     unsigned long frameStartTime = 0;
     int nextClientCallbackIndex = 0;
-    std::mutex *signalLock;
     int syncCount = 0;
     int syncIndex1 = 0;
     int syncIndex2 = 0;
@@ -69,9 +68,10 @@ class ArTemperatureHumiditySignalMonitor {
 
     int addListener(VoidFunctionPtr callback);
     int addListener(VoidFunctionPtr callback, void *data);
+    int getDataPin();
     void enableDebugOutput(bool state);
     void removeListener(int listenerId);
-    void static signalHasChanged(ArTemperatureHumiditySignalMonitor *sm);
+    void static signalHasChanged(int index);
 
   private:
     DataIntegrity checkDataIntegrity();
@@ -85,7 +85,7 @@ class ArTemperatureHumiditySignalMonitor {
     void processMessage(unsigned long frameEndTime);
     void processMessage(unsigned long frameEndTime, int attempt);
     void setTiming(int offset, unsigned short value);
-    void signalHasChangedAux();
+    void signalHasChangedAux(unsigned long now);
     void tryToCleanUpSignal();
 
 #ifdef COLLECT_STATS
