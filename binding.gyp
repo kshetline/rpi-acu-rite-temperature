@@ -15,12 +15,24 @@
       "include_dirs": [
         "node_modules/node-addon-api",
         "/usr/include/node",
+        "/usr/local/include/node",
         "<!(node -e \"require('node-addon-api').include\")"
       ],
       "libraries": [
         "-lwiringPi"
       ],
-      "defines": ["NAPI_ENABLE_CPP_EXCEPTIONS"]
+      "defines": ["NAPI_CPP_EXCEPTIONS"],
+      'conditions': [
+        ["OS==\"mac\"", {
+          "defines": ["FAKE_WIRING_PI"],
+          "libraries!": ["-lwiringPi"],
+          "xcode_settings": {"GCC_ENABLE_CPP_EXCEPTIONS": "YES"}
+        }],
+        ["OS==\"win\"", {
+          "defines": ["FAKE_WIRING_PI"],
+          "libraries!": ["-lwiringPi"]
+        }],
+      ],
     }
   ]
 }

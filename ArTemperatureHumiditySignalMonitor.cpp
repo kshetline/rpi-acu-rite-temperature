@@ -36,7 +36,23 @@
 #include <thread>
 #include <time.h>
 #include <unistd.h>
+
+#ifndef FAKE_WIRING_PI
 #include <wiringPi.h>
+#else
+#define INPUT 0
+#define INT_EDGE_BOTH 0
+#define LOW 0
+#define HIGH 1
+static int wiringPiSetupGpio() { return 0; }
+static int wiringPiSetupPhys() { return 0; }
+static int wiringPiSetupSys() { return 0; }
+static int wiringPiSetup() { return 0; }
+static int digitalRead(int dataPin) { return 0; }
+static void pinMode(int dataPin, int mode) {}
+static void wiringPiISR(int dataPin, int mode, void (*callback)()) {}
+static unsigned long micros() { return 0ul; }
+#endif
 
 using namespace std;
 
@@ -57,7 +73,7 @@ static const int LONG_SYNC_TOL =      250;
 static const int TOTAL_BITS =            56;
 static const int MIN_TRANSITIONS =       TOTAL_BITS * 2;
 static const int IDEAL_TRANSITIONS =     MIN_TRANSITIONS + 2; // short sync high, long sync low
-static const int MAX_TRANSITONS =        IDEAL_TRANSITIONS + 4; // small allowance for spurious noises
+static const int MAX_TRANSITIONS =       IDEAL_TRANSITIONS + 4; // small allowance for spurious noises
 
 static const int MIN_MESSAGE_LENGTH       = TOTAL_BITS * (SHORT_PULSE + LONG_PULSE) - TOLERANCE;
 const int MAX_MESSAGE_LENGTH       = MESSAGE_LENGTH + TOLERANCE;
@@ -84,7 +100,7 @@ static const int TEMPERATURE_LAST_BIT =  47;
 
 static const int MAX_MONITORS = 10;
 
-static const int REPEAT_SUPRESSION    =  60; // 1 minute
+static const int REPEAT_SUPPRESSION    = 60; // 1 minute
 static const int REUSE_OLD_DATA_LIMIT = 600; // 10 minutes
 
 bool ARTHSM::initialSetupDone = false;
@@ -203,7 +219,7 @@ void ARTHSM::signalHasChangedAux(unsigned long now) {
     int messageTime = now - frameStartTime;
     int changeCount = mod(syncIndex2 - syncIndex1, RING_BUFFER_SIZE);
 
-    if (MIN_TRANSITIONS <= changeCount && changeCount <= MAX_TRANSITONS &&
+    if (MIN_TRANSITIONS <= changeCount && changeCount <= MAX_TRANSITIONS &&
         MIN_MESSAGE_LENGTH <= messageTime && messageTime <= MAX_MESSAGE_LENGTH)
     {
       processMessage(now);
@@ -244,7 +260,7 @@ string getTimestamp() {
   gettimeofday(&time, nullptr);
   time_t sec = time.tv_sec;
   strftime(buf, 32, "%R:%S.", localtime(&sec));
-  sprintf(&buf[9], "%03ld", time.tv_usec / 1000);
+  sprintf(&buf[9], "%03ld", (long) (time.tv_usec / 1000L));
 
   return string(buf);
 }
@@ -355,7 +371,7 @@ void ARTHSM::processMessage(unsigned long frameEndTime, int attempt) {
         if (lastSensorData.count(sd.channel) > 0) {
           const SensorData lastData = lastSensorData[sd.channel];
 
-          if (sd.collectionTime < lastData.collectionTime + REPEAT_SUPRESSION &&
+          if (sd.collectionTime < lastData.collectionTime + REPEAT_SUPPRESSION &&
              sd.hasSameValues(lastData))
             doCallback = cacheNewData = false;
 
