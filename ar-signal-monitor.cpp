@@ -1,5 +1,5 @@
 /*
- * ArTemperatureHumiditySignalMonitor.cpp
+ * ar-signal-monitor.cpp
  *
  * Copyright 2020 Kerry Shetline <kerry@shetline.com>
  *
@@ -25,7 +25,7 @@
  *
  */
 
-#include "ArTemperatureHumiditySignalMonitor.h"
+#include "ar-signal-monitor.h"
 
 #include <functional>
 #include <iomanip>

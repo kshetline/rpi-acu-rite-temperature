@@ -9,8 +9,8 @@
       "sources": [
         "ar-signal-monitor-node.cpp",
         "ar-signal-monitor-node.h",
-        "ArTemperatureHumiditySignalMonitor.cpp",
-        "ArTemperatureHumiditySignalMonitor.h"
+        "ar-signal-monitor.cpp",
+        "ar-signal-monitor.h"
       ],
       "include_dirs": [
         "node_modules/node-addon-api",

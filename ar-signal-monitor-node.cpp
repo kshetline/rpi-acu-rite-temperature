@@ -1,6 +1,6 @@
 #include <napi.h>
 #include <iostream>
-#include "ArTemperatureHumiditySignalMonitor.h"
+#include "ar-signal-monitor.h"
 
 using namespace std;
 
