@@ -2,8 +2,6 @@ const ArSignalMonitor = require('bindings')('ar_signal_monitor');
 
 console.log('Awaiting temperature/humidity data...');
 
-let updates = 0;
-
 const id = ArSignalMonitor.addSensorDataListener(2, (data: any) => {
   let formatted = JSON.stringify(data, null, 1).replace(/[{}"\n\r]/g, '').trim();
 
@@ -17,7 +15,4 @@ const id = ArSignalMonitor.addSensorDataListener(2, (data: any) => {
     data.miscData3.toString(16).toUpperCase());
 
   console.log(formatted);
-
-  if (++updates == 40)
-    ArSignalMonitor.removeSensorDataListener(id);
 });

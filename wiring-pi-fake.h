@@ -96,9 +96,13 @@ static void wpiSendForChannel(int channel, int index) {
   for (int i = 0; i < 6; ++i)
     bytes[6] += bytes[i]; // compute checksum
 
-  // Occasionally toss in a random bad bit
-  if (std::rand() % 10 == 0) {
-    int badBit = 2 + std::min(std::rand() % 78, 53); // Increase odds for bad checksum over bad parity, don't mess up channel.
+  bytes[6] &= 0xFF;
+
+  // Occasionally toss in a random bad bit, with channel A being the noisiest.
+  if (std::rand() % (index == 0 ? 3 : 10) == 0) {
+    // Increase odds for bad checksum over bad parity, and don't mess up channel bits.
+    int badBit = 2 + std::rand() % 78;
+    badBit = (badBit < 55 ? badBit : 48 + badBit % 8);
     bytes[badBit / 8] ^= 1 << (badBit % 8);
   }
 
@@ -125,6 +129,9 @@ static void wpiSendSignals() {
 }
 
 static int wiringPiSetup() {
+  std::srand(std::chrono::duration_cast<std::chrono::milliseconds>
+    (std::chrono::system_clock::now().time_since_epoch()).count());
+
   return 0;
 }
 

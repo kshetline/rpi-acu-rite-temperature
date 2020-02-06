@@ -27,6 +27,7 @@ class ArTemperatureHumiditySignalMonitor {
         int miscData2;
         int miscData3;
         int rawTemp;
+        int signalQuality;
         double tempCelsius;
         double tempFahrenheit;
         bool validChecksum;
@@ -45,6 +46,7 @@ class ArTemperatureHumiditySignalMonitor {
     typedef void (*VoidFunctionPtr)(SensorData sensorData, void *miscData);
     typedef void *VoidPtr;
     typedef std::pair<VoidFunctionPtr, VoidPtr> ClientCallback;
+    typedef std::pair<unsigned long, int> TimeAndQuality;
 
     std::map<int, ClientCallback> clientCallbacks;
     int dataPin = -1;
@@ -54,6 +56,7 @@ class ArTemperatureHumiditySignalMonitor {
     unsigned long lastSignalChange = 0;
     unsigned long frameStartTime = 0;
     int nextClientCallbackIndex = 0;
+    std::map<char, std::vector<TimeAndQuality>> qualityTracking;
     int syncCount = 0;
     int syncIndex1 = 0;
     int syncIndex2 = 0;
@@ -87,6 +90,7 @@ class ArTemperatureHumiditySignalMonitor {
     void setTiming(int offset, unsigned short value);
     void signalHasChangedAux(unsigned long now);
     void tryToCleanUpSignal();
+    int updateSignalQuality(char channel, unsigned long time, int rank);
 
 #ifdef COLLECT_STATS
     unsigned long totalMessageTime = 0;

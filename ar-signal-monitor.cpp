@@ -92,6 +92,12 @@ static const int MAX_MONITORS = 10;
 static const int REPEAT_SUPPRESSION    = 60; // 1 minute
 static const int REUSE_OLD_DATA_LIMIT = 600; // 10 minutes
 
+static const int SIGNAL_QUALITY_WINDOW = 300000000; // 5 minutes
+static const int DESIRED_SIGNAL_RATE =    30000000; // At least one channel update every 30 seconds
+static const int RANK_HIGH = 4;
+static const int RANK_MID  = 2;
+static const int RANK_LOW  = 1;
+
 bool ARTHSM::initialSetupDone = false;
 ARTHSM::PinSystem ARTHSM::pinSystem = (ARTHSM::PinSystem) -1;
 int ARTHSM::callbackIndex = 0;
@@ -260,7 +266,8 @@ void ARTHSM::processMessage(unsigned long frameEndTime) {
 
 void ARTHSM::processMessage(unsigned long frameEndTime, int attempt) {
   auto integrity = checkDataIntegrity();
-  string allBits = getBitsAsString() + " (" + to_string(frameEndTime - frameStartTime) + "µs)";
+  char channel = "?C?BA"[getInt(CHANNEL_FIRST_BIT, CHANNEL_LAST_BIT) + 1];
+  string allBits = (debugOutput ? getBitsAsString() + " (" + to_string(frameEndTime - frameStartTime) + "µs)" : "");
 #if defined(COLLECT_STATS) || defined(SHOW_RAW_DATA) || defined(SHOW_MARGINAL_DATA)
 #define TIMES_ARRAY_ARG , times, changeCount
   int changeCount = mod(syncIndex2 - syncIndex1, RING_BUFFER_SIZE);
@@ -306,7 +313,7 @@ void ARTHSM::processMessage(unsigned long frameEndTime, int attempt) {
 
     SensorData sd;
 
-    sd.channel = "C?BA"[getInt(CHANNEL_FIRST_BIT, CHANNEL_LAST_BIT)];
+    sd.channel = channel;
     sd.validChecksum = (integrity == GOOD);
     sd.batteryLow = getBit(BATTERY_LOW_BIT);
     sd.miscData1 = getInt(MISC_DATA_1_FIRST_BIT, MISC_DATA_1_LAST_BIT);
@@ -325,6 +332,9 @@ void ARTHSM::processMessage(unsigned long frameEndTime, int attempt) {
 
     sd.tempFahrenheit = sd.tempCelsius == -999 ? -999 :
       round((sd.tempCelsius * 1.8 + 32.0) * 10.0) / 10.0;
+
+    sd.signalQuality = updateSignalQuality(sd.channel, frameEndTime,
+      sd.validChecksum && sd.humidity != -999 && sd.rawTemp != -999 ? RANK_HIGH : RANK_MID);
 
     thread([this, allBits, sd, attempt TIMES_ARRAY_ARG] {
       dispatchLock->lock();
@@ -418,6 +428,8 @@ void ARTHSM::processMessage(unsigned long frameEndTime, int attempt) {
       dispatchLock->unlock();
     }).detach();
   }
+  else if (integrity == BAD_PARITY)
+    updateSignalQuality(channel, frameEndTime, RANK_LOW);
 }
 
 void ARTHSM::tryToCleanUpSignal() {
@@ -511,6 +523,42 @@ void ARTHSM::tryToCleanUpSignal() {
       }
     }
   }
+}
+
+int ARTHSM::updateSignalQuality(char channel, unsigned long time, int rank) {
+  if (channel == '?')
+    return 0;
+
+  vector<TimeAndQuality> recents;
+
+  if (qualityTracking.count(channel) > 0) {
+    recents = qualityTracking[channel];
+
+    // Purge old info
+    auto it = recents.begin();
+
+    while (it != recents.end()) {
+      if ((long) it->first < (long) time - (long) SIGNAL_QUALITY_WINDOW)
+        it = recents.erase(it);
+      else
+        ++it;
+    }
+  }
+
+  recents.push_back({ time, rank });
+  qualityTracking[channel] = recents;
+
+  auto it = recents.begin();
+  int total = 0;
+
+  while (it != recents.end()) {
+    total += it->second;
+    ++it;
+  }
+
+  int desiredTotal = max((int) (SIGNAL_QUALITY_WINDOW / DESIRED_SIGNAL_RATE), (int) recents.size()) * RANK_HIGH;
+
+  return min((int) round(total * 100.0 / desiredTotal), 100);
 }
 
 int ARTHSM::addListener(VoidFunctionPtr callback) {

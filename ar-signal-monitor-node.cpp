@@ -41,6 +41,8 @@ static void jsCallback(napi_env env, napi_value js_cb, void* context, void* misc
     Napi::Number::New(env, sensorData->miscData3));
   obj.Set(Napi::String::New(env, "rawTemp"),
     Napi::Number::New(env, sensorData->rawTemp));
+  obj.Set(Napi::String::New(env, "signalQuality"),
+    Napi::Number::New(env, sensorData->signalQuality));
   obj.Set(Napi::String::New(env, "tempCelsius"),
     sensorData->tempCelsius == -999 ? origEnv.Undefined() : Napi::Number::New(env, sensorData->tempCelsius));
   obj.Set(Napi::String::New(env, "tempFahrenheit"),
@@ -145,7 +147,7 @@ void removeSensorDataListener(const Napi::CallbackInfo &info) {
 
     // Hack alert! If I don't wait to delete this, there's a crash, but I don't know if there's a good signal to wait for.
     thread([tsfn]() {
-      this_thread::sleep_for(std::chrono::seconds(1));
+      this_thread::sleep_for(std::chrono::milliseconds(250));
       delete tsfn;
     }).detach();
 
