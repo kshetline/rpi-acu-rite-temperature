@@ -361,7 +361,7 @@ void ARTHSM::processMessage(unsigned long frameEndTime, int attempt) {
           const SensorData lastData = lastSensorData[sd.channel];
 
           if (sd.collectionTime < lastData.collectionTime + REPEAT_SUPPRESSION &&
-             sd.hasSameValues(lastData))
+              sd.hasSameValues(lastData))
             doCallback = cacheNewData = false;
 
           if (!sd.validChecksum && lastData.validChecksum) {

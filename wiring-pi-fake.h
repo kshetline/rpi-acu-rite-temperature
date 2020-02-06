@@ -23,6 +23,8 @@ static unsigned long wpiCurrMicros = 0;
 static bool wpiRunning = false;
 static bool wpiPinHigh = false;
 static int wpiChannels[] = { 0x3, 0x2, 0x0 };
+static int wpiLastHumidity[] = { 50, 40, 30 };
+static int wpiLastTemp[] = { 1020, 1120, 1220 };
 
 typedef struct {
   int pin;
@@ -68,7 +70,10 @@ static void wpiSendByte(int b) {
 }
 
 static void wpiSendForChannel(int channel, int index) {
-  std::cout << "signal " << index << "...\n";
+  if (index == 0) {
+    wpiSendPulse(WPI_SHORT_PULSE);
+    wpiSendPulse(WPI_LONG_PULSE);
+  }
 
   wpiSendPulse(WPI_PRE_LONG_SYNC);
   wpiSendPulse(WPI_LONG_SYNC_PULSE);
@@ -77,8 +82,11 @@ static void wpiSendForChannel(int channel, int index) {
     wpiSendPulse(WPI_SHORT_SYNC_PULSE);
 
   int bytes[7] = { 0 };
-  int humidity = 55;
-  int temp = 1200;
+  int humidity =  std::min(std::max(wpiLastHumidity[index] + std::rand() % 3 - 1, 45 - index * 10), 55 - index * 10);
+  int temp = std::min(std::max(wpiLastTemp[index] + std::rand() % 3 - 1, 980 + index * 100), 1060 + index * 100);
+
+  wpiLastHumidity[index] = humidity;
+  wpiLastTemp[index] = temp;
 
   bytes[0] = channel << 6;
   bytes[3] = wpiApplyParity(humidity);
@@ -86,7 +94,13 @@ static void wpiSendForChannel(int channel, int index) {
   bytes[5] = wpiApplyParity(temp & 0x7F);
 
   for (int i = 0; i < 6; ++i)
-    bytes[6] += bytes[i];
+    bytes[6] += bytes[i]; // compute checksum
+
+  // Occasionally toss in a random bad bit
+  if (std::rand() % 10 == 0) {
+    int badBit = 2 + std::min(std::rand() % 78, 53); // Increase odds for bad checksum over bad parity, don't mess up channel.
+    bytes[badBit / 8] ^= 1 << (badBit % 8);
+  }
 
   for (int i = 0; i < 7; ++i)
     wpiSendByte(bytes[i]);

@@ -18,6 +18,6 @@ const id = ArSignalMonitor.addSensorDataListener(2, (data: any) => {
 
   console.log(formatted);
 
-  if (++updates == 4)
+  if (++updates == 40)
     ArSignalMonitor.removeSensorDataListener(id);
 });
