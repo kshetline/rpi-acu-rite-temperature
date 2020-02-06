@@ -24,12 +24,12 @@
       "defines": ["NAPI_CPP_EXCEPTIONS"],
       'conditions': [
         ["OS==\"mac\"", {
-          "defines": ["FAKE_WIRING_PI"],
+          "defines": ["USE_FAKE_WIRING_PI"],
           "libraries!": ["-lwiringPi"],
           "xcode_settings": {"GCC_ENABLE_CPP_EXCEPTIONS": "YES"}
         }],
         ["OS==\"win\"", {
-          "defines": ["FAKE_WIRING_PI"],
+          "defines": ["USE_FAKE_WIRING_PI"],
           "libraries!": ["-lwiringPi"]
         }],
       ],

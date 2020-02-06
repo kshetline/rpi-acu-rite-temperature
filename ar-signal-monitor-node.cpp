@@ -1,5 +1,7 @@
 #include <napi.h>
+#include <chrono>
 #include <iostream>
+#include <thread>
 #include "ar-signal-monitor.h"
 
 using namespace std;
@@ -136,10 +138,17 @@ void removeSensorDataListener(const Napi::CallbackInfo &info) {
 
   if (callbackInfoById.count(id) > 0) {
     auto cbi = callbackInfoById[id];
+    auto tsfn = cbi->tsfn;
     callbackInfoById.erase(id);
     napi_acquire_threadsafe_function(*cbi->tsfn);
     napi_release_threadsafe_function(*cbi->tsfn, napi_tsfn_abort);
-    delete cbi->tsfn;
+
+    // Hack alert! If I don't wait to delete this, there's a crash, but I don't know if there's a good signal to wait for.
+    thread([tsfn]() {
+      this_thread::sleep_for(std::chrono::seconds(1));
+      delete tsfn;
+    }).detach();
+
     delete cbi;
   }
 

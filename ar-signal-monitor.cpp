@@ -37,21 +37,10 @@
 #include <time.h>
 #include <unistd.h>
 
-#ifndef FAKE_WIRING_PI
+#ifndef USE_FAKE_WIRING_PI
 #include <wiringPi.h>
 #else
-#define INPUT 0
-#define INT_EDGE_BOTH 0
-#define LOW 0
-#define HIGH 1
-static int wiringPiSetupGpio() { return 0; }
-static int wiringPiSetupPhys() { return 0; }
-static int wiringPiSetupSys() { return 0; }
-static int wiringPiSetup() { return 0; }
-static int digitalRead(int dataPin) { return 0; }
-static void pinMode(int dataPin, int mode) {}
-static void wiringPiISR(int dataPin, int mode, void (*callback)()) {}
-static unsigned long micros() { return 0ul; }
+#include "wiring-pi-fake.h"
 #endif
 
 using namespace std;
@@ -337,7 +326,7 @@ void ARTHSM::processMessage(unsigned long frameEndTime, int attempt) {
     sd.tempFahrenheit = sd.tempCelsius == -999 ? -999 :
       round((sd.tempCelsius * 1.8 + 32.0) * 10.0) / 10.0;
 
-    thread dispatch([this, allBits, sd, attempt TIMES_ARRAY_ARG] {
+    thread([this, allBits, sd, attempt TIMES_ARRAY_ARG] {
       dispatchLock->lock();
 
       if (debugOutput) {
@@ -398,15 +387,14 @@ void ARTHSM::processMessage(unsigned long frameEndTime, int attempt) {
       }
 
       dispatchLock->unlock();
-    });
-    dispatch.detach();
+    }).detach();
   }
   else if (attempt == 0) {
     tryToCleanUpSignal();
     processMessage(frameEndTime, 1);
   }
   else if (debugOutput) {
-    thread report([this, allBits TIMES_ARRAY_ARG] {
+    thread([this, allBits TIMES_ARRAY_ARG] {
 #ifdef SHOW_MARGINAL_DATA
       int b = 0;
       int tt = 0;
@@ -428,8 +416,7 @@ void ARTHSM::processMessage(unsigned long frameEndTime, int attempt) {
       dispatchLock->lock();
       cout << allBits << endl << getTimestamp() << ": Corrupted data\n";
       dispatchLock->unlock();
-    });
-    report.detach();
+    }).detach();
   }
 }
 
