@@ -5,6 +5,7 @@
 #include <mutex>
 #include <string>
 #include <utility>
+#include <vector>
 
 static const int RING_BUFFER_SIZE = 512;
 
