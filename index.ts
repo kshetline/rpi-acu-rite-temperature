@@ -1,18 +1,37 @@
 const ArSignalMonitor = require('bindings')('ar_signal_monitor');
 
-console.log('Awaiting temperature/humidity data...');
+export interface HtSensorData {
+  batteryLow: boolean;
+  channel: string;       // A, B, or C
+  humidity: number;      // Integer 0-100
+  miscData1: number;     // Bits  2-15 of the transmission.
+  miscData2: number;     // Bits 17-23 of the transmission.
+  miscData3: number;     // Bits 33-35 of the transmission.
+  rawTemp: number;       // Integer tenths of a degree Celsius plus 1000 (original transmission data format)
+  signalQuality: number; // Integer 0-100
+  tempCelsius: number;
+  tempFahrenheit: number;
+  validChecksum: boolean; // Is the data fully trustworthy?
+}
 
-const id = ArSignalMonitor.addSensorDataListener(2, (data: any) => {
-  let formatted = JSON.stringify(data, null, 1).replace(/[{}"\n\r]/g, '').trim();
+export enum PinSystem { VIRTUAL, SYS, GPIO, PHYS }
 
-  formatted = formatted.replace(/(miscData1:) \d+/, '$1 0x' +
-    data.miscData1.toString(16).toUpperCase().padStart(4, '0'));
+export type HtSensorDataCallback = (data: HtSensorData) => void;
 
-  formatted = formatted.replace(/(miscData2:) \d+/, '$1 0x' +
-    data.miscData2.toString(16).toUpperCase().padStart(2, '0'));
+export function addSensorDataListener(pin: number, callback: HtSensorDataCallback): number;
+export function addSensorDataListener(pin: number, pinSystem: PinSystem, callback: HtSensorDataCallback): number;
+export function addSensorDataListener(pin: number, pinSysOrCallback: PinSystem | HtSensorDataCallback,
+                                      callback?: HtSensorDataCallback): number {
+  let pinSystem = PinSystem.VIRTUAL;
 
-  formatted = formatted.replace(/(miscData3:) \d+/, '$1 0x' +
-    data.miscData3.toString(16).toUpperCase());
+  if (typeof pinSysOrCallback === 'function')
+    callback = pinSysOrCallback;
+  else
+    pinSystem = pinSysOrCallback;
 
-  console.log(formatted);
-});
+  return ArSignalMonitor.addSensorDataListener(pin, pinSystem, callback);
+}
+
+export function removeSensorDataListener(callbackId: number): void {
+  ArSignalMonitor.removeSensorDataListener(callbackId);
+}

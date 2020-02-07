@@ -6,6 +6,7 @@
 /tslint.json
 *.ts
 *.js.map
+!*d.ts
 *.spec.d.ts
 *.spec.js
 
@@ -13,3 +14,4 @@
 *.o
 *.gch
 ar-signal-monitor-test
+test.d.ts
