@@ -66,5 +66,5 @@ The function returns a numeric ID which can be used by the function below to unr
 ### removeSensorDataListener
 
 ```
-function removeSensorDataListener(callbackId: number): void;
+removeSensorDataListener(callbackId: number): void;
 ```

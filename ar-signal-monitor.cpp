@@ -64,7 +64,7 @@ static const int IDEAL_TRANSITIONS =     MIN_TRANSITIONS + 2; // short sync high
 static const int MAX_TRANSITIONS =       IDEAL_TRANSITIONS + 4; // small allowance for spurious noises
 
 static const int MIN_MESSAGE_LENGTH       = TOTAL_BITS * (SHORT_PULSE + LONG_PULSE) - TOLERANCE;
-const int MAX_MESSAGE_LENGTH       = MESSAGE_LENGTH + TOLERANCE;
+static const int MAX_MESSAGE_LENGTH       = MESSAGE_LENGTH + TOLERANCE;
 
 static const int CHANNEL_FIRST_BIT =      0;
 static const int CHANNEL_LAST_BIT =       1;
