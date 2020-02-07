@@ -4,7 +4,7 @@
 using namespace std;
 
 void callback(ArTemperatureHumiditySignalMonitor::SensorData sd, void *msg) {
-	printf("<>\n");
+  printf("<>\n");
   // printf("%s%c %c, %d, %.1f, %.1f\n",
   //   (char *) msg, sd.validChecksum ? ':' : '~', sd.channel,
   //   sd.humidity, sd.tempCelsius, sd.tempFahrenheit);

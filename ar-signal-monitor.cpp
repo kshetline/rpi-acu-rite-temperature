@@ -621,12 +621,12 @@ int ARTHSM::getBit(int offset) {
   int t0 = timings[mod(syncIndex1 + offset * 2, RING_BUFFER_SIZE)];
   int t1 = timings[mod(syncIndex1 + offset * 2 + 1, RING_BUFFER_SIZE)];
 
-	if (t0 + t1 < SHORT_PULSE + LONG_PULSE + TOLERANCE * 2 &&
+  if (t0 + t1 < SHORT_PULSE + LONG_PULSE + TOLERANCE * 2 &&
       SHORT_PULSE - TOLERANCE < t0 && t0 < LONG_PULSE + TOLERANCE &&
       SHORT_PULSE - TOLERANCE < t1 && t1 < LONG_PULSE + TOLERANCE)
   {
-		return t0 > t1 ? 1 : 0;
-	}
+    return t0 > t1 ? 1 : 0;
+  }
 
   return -1;
 }
