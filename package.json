@@ -1,5 +1,5 @@
 {
-  "name": "rpi-acu-rite-433mhz",
+  "name": "rpi-acu-rite-temperature",
   "version": "1.0.0",
   "description": "Library for reading the Acu-Rite 06002M Wireless Temperature and Humidity Sensor using a Raspberry Pi via 433Mhz receiver",
   "main": "index.js",
@@ -19,7 +19,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kshetline/rpi-acu-rite-433mhz.git"
+    "url": "git+https://github.com/kshetline/rpi-acu-rite-temperature.git"
   },
   "keywords": [
     "raspberry",
@@ -30,8 +30,8 @@
   "author": "Kerry Shetline <kerry@shetline.com>",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/kshetline/rpi-acu-rite-433mhz/issues"
+    "url": "https://github.com/kshetline/rpi-acu-rite-temperature/issues"
   },
-  "homepage": "https://github.com/kshetline/rpi-acu-rite-433mhz#readme",
+  "homepage": "https://github.com/kshetline/rpi-acu-rite-temperature#readme",
   "gypfile": true
 }

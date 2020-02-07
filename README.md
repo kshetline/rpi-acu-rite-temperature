@@ -1,4 +1,4 @@
-# rpi-acu-rite-433mhz
+# rpi-acu-rite-temperature
 
 ## Library for reading the Acu-Rite 06002M Wireless Temperature and Humidity Sensor using a Raspberry Pi with a 433Mhz receiver
 
@@ -6,21 +6,21 @@ _Note: This software is neither produced by nor endorsed by [Acu-Rite](https://a
 
 _This library was inspired by work originally done by [Ray Wang](http://rayshobby.net/?p=8998)._
 
-`rpi-acu-rite-433mhz` can be used for JavaScript/TypeScript programming in a Node.js environment, or the included C++ code can be used directly. It is the JavaScript/TypeScript interface that is documented here.
+`rpi-acu-rite-temperature` can be used for JavaScript/TypeScript programming in a Node.js environment, or the included C++ code can be used directly. It is the JavaScript/TypeScript interface that is documented here.
 
 Full functionality requires a Raspberry Pi, but this code can be installed and compiled under MacOS (and perhaps Windows as well — not yet verified) in such a way that it returns simulated data for testing and development use.
 
 ### Installation
 
-`npm install rpi-acu-rite-433mhz`
+`npm install rpi-acu-rite-temperature`
 
 ### Usage
 
-`const { addSensorDataListener, removeSensorDataListener } = require('rpi-acu-rite-433mhz');`
+`const { addSensorDataListener, removeSensorDataListener } = require('rpi-acu-rite-temperature');`
 
 _...or..._
 
-`import { addSensorDataListener, PinSystem, removeSensorDataListener } from 'rpi-acu-rite-433mhz';`
+`import { addSensorDataListener, PinSystem, removeSensorDataListener } from 'rpi-acu-rite-temperature';`
 
 ### HtSensorData
 
