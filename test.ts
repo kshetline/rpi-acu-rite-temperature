@@ -1,8 +1,17 @@
-import { addSensorDataListener, removeSensorDataListener } from './index';
+import { addSensorDataListener, PinSystem, removeSensorDataListener } from './index';
 
-console.log('Awaiting humidity/temperature data...');
+let pinArg = '';
 
-const id = addSensorDataListener(2, data => {
+for (let i = 0; i < process.argv.length - 1 && !pinArg; ++i)
+  pinArg = process.argv[i] === '-p' ? process.argv[i + 1].toLowerCase() : '';
+
+const pin = parseFloat(pinArg) || 2;
+const pinSystemIndex = 'sgp'.indexOf(pinArg.substr(-1)) + 1;
+const pinSystem = [PinSystem.VIRTUAL, PinSystem.SYS, PinSystem.GPIO, PinSystem.PHYS][pinSystemIndex];
+
+console.log(`Awaiting humidity/temperature data on pin ${pin}${' sgp'.substr(pinSystemIndex, 1).trim()}...`);
+
+const id = addSensorDataListener(pin, pinSystem, data => {
   let formatted = JSON.stringify(data, null, 1).replace(/[{}"\n\r]/g, '').trim();
 
   formatted = formatted.replace(/(miscData1:) \d+/, '$1 0x' +

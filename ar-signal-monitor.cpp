@@ -91,11 +91,13 @@ static const int MAX_MONITORS = 10;
 static const int REPEAT_SUPPRESSION    = 60; // 1 minute
 static const int REUSE_OLD_DATA_LIMIT = 600; // 10 minutes
 
+static const int SIGNAL_QUALITY_CHECK_RATE = 90; // 90 seconds
 static const int SIGNAL_QUALITY_WINDOW = 300000000; // 5 minutes
 static const int DESIRED_SIGNAL_RATE =    30000000; // At least one channel update every 30 seconds
-static const int RANK_HIGH = 4;
-static const int RANK_MID  = 2;
-static const int RANK_LOW  = 1;
+static const int RANK_HIGH  = 4;
+static const int RANK_MID   = 2;
+static const int RANK_LOW   = 1;
+static const int RANK_CHECK = 0;
 
 bool ARTHSM::initialSetupDone = false;
 ARTHSM::PinSystem ARTHSM::pinSystem = (ARTHSM::PinSystem) -1;
@@ -130,10 +132,20 @@ ARTHSM::~ArTemperatureHumiditySignalMonitor() {
     monitors[callbackIndex] = nullptr;
 
   if (dataPin >= 0)
-    pinMode(dataPin, INPUT); // stop callbacks
+    pinMode(dataPin, INPUT); // stop pin signal callbacks
 
-  delete dispatchLock;
   signalLocks[callbackIndex].unlock();
+
+  dispatchLock->lock();
+  qualityCheckExitSignal.set_value();
+  dispatchLock->unlock();
+
+  auto dLock = dispatchLock;
+
+  thread([dLock]() {
+    this_thread::sleep_for(std::chrono::milliseconds(250));
+    delete dLock;
+  }).detach();
 }
 
 void ARTHSM::init(int dataPin) {
@@ -172,6 +184,41 @@ void ARTHSM::init(int dataPin, PinSystem pinSys) {
 
   if (callbackIndex < 0)
     throw "Maximum number of ArTemperatureHumiditySignalMonitor instances reached";
+
+  qualityCheckLoopControl = qualityCheckExitSignal.get_future();
+
+  thread([this]() {
+    while (qualityCheckLoopControl.wait_for(std::chrono::seconds(SIGNAL_QUALITY_CHECK_RATE)) == std::future_status::timeout) {
+      dispatchLock->lock();
+
+      auto now = micros();
+      auto it = lastSensorData.begin();
+
+      while (it != lastSensorData.end()) {
+        auto sd = it->second;
+
+        if (sd.collectionTime + SIGNAL_QUALITY_CHECK_RATE * 1000000 < now) {
+          sd.signalQuality = updateSignalQuality(sd.channel, now, RANK_CHECK);
+
+          ARTHSM *sm = this;
+
+          thread([sm, sd]() {
+            sm->dispatchLock->lock();
+            sm->sendData(sd);
+            sm->dispatchLock->unlock();
+          }).detach();
+        }
+
+        // Only send quality 0 once, then act as if the channel doesn't exist until signal is received again.
+        if (sd.signalQuality == 0)
+          it = lastSensorData.erase(it);
+        else
+          ++it;
+      }
+
+      dispatchLock->unlock();
+    }
+  }).detach();
 
   this->dataPin = dataPin;
   wiringPiISR(dataPin, INT_EDGE_BOTH, smCallbacks[callbackIndex]);
@@ -380,16 +427,12 @@ void ARTHSM::processMessage(unsigned long frameEndTime, int attempt) {
                 sd.hasCloseValues(lastData))
               doCallback = false;
           }
+          else if (sd.validChecksum && !lastData.validChecksum)
+            doCallback = cacheNewData = true;
         }
 
-        if (doCallback) {
-          auto iterator = clientCallbacks.begin();
-
-          while (iterator != clientCallbacks.end()) {
-            iterator->second.first(sd, iterator->second.second);
-            ++iterator;
-          }
-        }
+        if (doCallback)
+          sendData(sd);
 
         if (cacheNewData)
           lastSensorData[sd.channel] = sd;
@@ -429,6 +472,15 @@ void ARTHSM::processMessage(unsigned long frameEndTime, int attempt) {
   }
   else if (integrity == BAD_PARITY)
     updateSignalQuality(channel, frameEndTime, RANK_LOW);
+}
+
+void ARTHSM::sendData(const SensorData &sd) {
+  auto iterator = clientCallbacks.begin();
+
+  while (iterator != clientCallbacks.end()) {
+    iterator->second.first(sd, iterator->second.second);
+    ++iterator;
+  }
 }
 
 void ARTHSM::tryToCleanUpSignal() {
@@ -544,7 +596,9 @@ int ARTHSM::updateSignalQuality(char channel, unsigned long time, int rank) {
     }
   }
 
-  recents.push_back({ time, rank });
+  if (rank != RANK_CHECK)
+    recents.push_back({ time, rank });
+
   qualityTracking[channel] = recents;
 
   auto it = recents.begin();

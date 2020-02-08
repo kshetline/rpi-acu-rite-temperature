@@ -44,11 +44,11 @@ export interface HtSensorData {
 
 `signalQuality` is measured over a five minute window, and will register low even for a strong signal until a full five minutes have passed.
 
-While it's best for `validChecksum` to be `true`, any data returned has also be validated by three parity bits. If you aren't willing to accept data from a weak signal that didn't arrive with a valid checksum, you might have to wait a long time for any data at all.
+While it's best for `validChecksum` to be `true`, any data provided has at least been validated by three parity bits even if the checksum didn't come out right. In some cases, if you aren't willing to accept data from a weak signal despite an invalid checksum, you might have to wait a long time for any data at all.
 
 ### addSensorDataListener
 
-This function is used to register a callback that receives the above temperature/humidity data. You must specify the input `pin` to which your 433 MHz RF receiver is connected, and optionally specify a pin numbering system. The default is `PinSystem.VIRTUAL`, which is the default pin numbering system used by _WiringPi_. Optionally you may use:
+This function is used to register a callback that receives the above temperature/humidity data. You must specify the input `pin` to which your [433 MHz RF receiver](https://www.amazon.com/gp/product/B00HEDRHG6/) is connected, and optionally specify a pin numbering system. The default is `PinSystem.VIRTUAL`, which is the default pin numbering system used by _WiringPi_. Optionally you may use:
 
 * `PinSystem.SYS`: _/sys/class/gpio_ interface pin numbers.
 * `PinSystem.GPIO`: Broadcom GPIO pin numbers.

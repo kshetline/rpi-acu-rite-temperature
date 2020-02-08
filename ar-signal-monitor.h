@@ -1,6 +1,7 @@
 #ifndef AR_TEMPERATURE_HUMIDITY_SIGNAL_MONITOR
 #define AR_TEMPERATURE_HUMIDITY_SIGNAL_MONITOR
 
+#include <future>
 #include <map>
 #include <mutex>
 #include <string>
@@ -57,6 +58,8 @@ class ArTemperatureHumiditySignalMonitor {
     unsigned long lastSignalChange = 0;
     unsigned long frameStartTime = 0;
     int nextClientCallbackIndex = 0;
+    std::promise<void> qualityCheckExitSignal;
+    std::future<void> qualityCheckLoopControl;
     std::map<char, std::vector<TimeAndQuality>> qualityTracking;
     int syncCount = 0;
     int syncIndex1 = 0;
@@ -88,6 +91,7 @@ class ArTemperatureHumiditySignalMonitor {
     bool isStartSyncAcquired();
     void processMessage(unsigned long frameEndTime);
     void processMessage(unsigned long frameEndTime, int attempt);
+    void sendData(const SensorData &sd);
     void setTiming(int offset, unsigned short value);
     void signalHasChangedAux(unsigned long now);
     void tryToCleanUpSignal();
