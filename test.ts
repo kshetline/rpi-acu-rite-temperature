@@ -1,9 +1,9 @@
 import { addSensorDataListener, PinSystem, removeSensorDataListener } from './index';
 
-let pinArg = '';
+let pinArg = 'v';
 
 for (let i = 0; i < process.argv.length - 1 && !pinArg; ++i)
-  pinArg = process.argv[i] === '-p' ? process.argv[i + 1].toLowerCase() : '';
+  pinArg = process.argv[i] === '-p' ? process.argv[i + 1].toLowerCase() : 'v';
 
 const pin = parseFloat(pinArg) || 2;
 const pinSystemIndex = 'sgp'.indexOf(pinArg.substr(-1)) + 1;
