@@ -58,13 +58,13 @@ static const int SHORT_SYNC_PULSE =   606;
 static const int TOLERANCE =          100;
 static const int LONG_SYNC_TOL =      250;
 
-static const int TOTAL_BITS =            56;
-static const int MIN_TRANSITIONS =       TOTAL_BITS * 2;
-static const int IDEAL_TRANSITIONS =     MIN_TRANSITIONS + 2; // short sync high, long sync low
-static const int MAX_TRANSITIONS =       IDEAL_TRANSITIONS + 4; // small allowance for spurious noises
+static const int TOTAL_BITS =         56;
+static const int MIN_TRANSITIONS =    TOTAL_BITS * 2;
+static const int IDEAL_TRANSITIONS =  MIN_TRANSITIONS + 2; // short sync high, long sync low
+static const int MAX_TRANSITIONS =    IDEAL_TRANSITIONS + 4; // small allowance for spurious noises
 
-static const int MIN_MESSAGE_LENGTH       = TOTAL_BITS * (SHORT_PULSE + LONG_PULSE) - TOLERANCE;
-static const int MAX_MESSAGE_LENGTH       = MESSAGE_LENGTH + TOLERANCE;
+static const int MIN_MESSAGE_LENGTH = TOTAL_BITS * (SHORT_PULSE + LONG_PULSE) - TOLERANCE;
+static const int MAX_MESSAGE_LENGTH = MESSAGE_LENGTH + TOLERANCE;
 
 static const int CHANNEL_FIRST_BIT =      0;
 static const int CHANNEL_LAST_BIT =       1;
@@ -88,7 +88,7 @@ static const int TEMPERATURE_LAST_BIT =  47;
 
 static const int MAX_MONITORS = 10;
 
-static const int REPEAT_SUPPRESSION    = 60; // 1 minute
+static const int REPEAT_SUPPRESSION =    60; // 1 minute
 static const int REUSE_OLD_DATA_LIMIT = 600; // 10 minutes
 
 static const int SIGNAL_QUALITY_CHECK_RATE = 90; // 90 seconds
@@ -191,13 +191,13 @@ void ARTHSM::init(int dataPin, PinSystem pinSys) {
     while (qualityCheckLoopControl.wait_for(std::chrono::seconds(SIGNAL_QUALITY_CHECK_RATE)) == std::future_status::timeout) {
       dispatchLock->lock();
 
-      auto now = micros();
+      auto now = micros() / 1000000;
       auto it = lastSensorData.begin();
 
       while (it != lastSensorData.end()) {
         auto sd = it->second;
 
-        if (sd.collectionTime + SIGNAL_QUALITY_CHECK_RATE * 1000000 < now) {
+        if (sd.collectionTime + SIGNAL_QUALITY_CHECK_RATE < now) {
           sd.signalQuality = updateSignalQuality(sd.channel, now, RANK_CHECK);
 
           ARTHSM *sm = this;
@@ -589,7 +589,7 @@ int ARTHSM::updateSignalQuality(char channel, unsigned long time, int rank) {
     auto it = recents.begin();
 
     while (it != recents.end()) {
-      if ((long) it->first < (long) time - (long) SIGNAL_QUALITY_WINDOW)
+      if (it->first + SIGNAL_QUALITY_WINDOW < time)
         it = recents.erase(it);
       else
         ++it;
