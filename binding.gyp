@@ -13,10 +13,10 @@
         "ar-signal-monitor.h"
       ],
       "include_dirs": [
+        "<!(node -e \"require('node-addon-api').include\")",
         "node_modules/node-addon-api",
         "/usr/include/node",
-        "/usr/local/include/node",
-        "<!(node -e \"require('node-addon-api').include\")"
+        "/usr/local/include/node"
       ],
       "libraries": [
         "-lwiringPi"
