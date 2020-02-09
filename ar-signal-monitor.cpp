@@ -191,13 +191,13 @@ void ARTHSM::init(int dataPin, PinSystem pinSys) {
     while (qualityCheckLoopControl.wait_for(std::chrono::seconds(SIGNAL_QUALITY_CHECK_RATE)) == std::future_status::timeout) {
       dispatchLock->lock();
 
-      auto now = micros() / 1000000;
+      auto now = micros();
       auto it = lastSensorData.begin();
 
       while (it != lastSensorData.end()) {
         auto sd = it->second;
 
-        if (sd.collectionTime + SIGNAL_QUALITY_CHECK_RATE < now) {
+        if (sd.collectionTime + SIGNAL_QUALITY_CHECK_RATE < now / 1000000) {
           sd.signalQuality = updateSignalQuality(sd.channel, now, RANK_CHECK);
 
           ARTHSM *sm = this;
