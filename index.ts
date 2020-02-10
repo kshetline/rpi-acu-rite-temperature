@@ -18,18 +18,30 @@ export enum PinSystem { VIRTUAL, SYS, GPIO, PHYS }
 
 export type HtSensorDataCallback = (data: HtSensorData) => void;
 
-export function addSensorDataListener(pin: number, callback: HtSensorDataCallback): number;
+export function addSensorDataListener(pin: number | string, callback: HtSensorDataCallback): number;
 export function addSensorDataListener(pin: number, pinSystem: PinSystem, callback: HtSensorDataCallback): number;
-export function addSensorDataListener(pin: number, pinSysOrCallback: PinSystem | HtSensorDataCallback,
+export function addSensorDataListener(pin: number | string, pinSysOrCallback: PinSystem | HtSensorDataCallback,
                                       callback?: HtSensorDataCallback): number {
+  let pinNumber: number;
   let pinSystem = PinSystem.VIRTUAL;
+
+  if (typeof pin === 'string') {
+    pinNumber = parseFloat(pin) || 2;
+    const pinSystemIndex = 'sgp'.indexOf(pin.substr(-1).toLowerCase()) + 1;
+    pinSystem = [PinSystem.VIRTUAL, PinSystem.SYS, PinSystem.GPIO, PinSystem.PHYS][pinSystemIndex];
+  }
+  else
+    pinNumber = pin;
 
   if (typeof pinSysOrCallback === 'function')
     callback = pinSysOrCallback;
   else
     pinSystem = pinSysOrCallback;
 
-  return ArSignalMonitor.addSensorDataListener(pin, pinSystem, callback);
+  if (typeof callback !== 'function')
+    throw new Error('callback function must be specified');
+
+  return ArSignalMonitor.addSensorDataListener(pinNumber, pinSystem, callback);
 }
 
 export function removeSensorDataListener(callbackId: number): void {
