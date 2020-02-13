@@ -14,6 +14,7 @@
       ],
       "include_dirs": [
         "<!(node -e \"require('node-addon-api').include\")",
+        "../node_modules/node-addon-api",
         "node_modules/node-addon-api",
         "/usr/include/node",
         "/usr/local/include/node"
@@ -22,7 +23,7 @@
         "-lwiringPi"
       ],
       "defines": ["NAPI_CPP_EXCEPTIONS"],
-      'conditions': [
+      "conditions": [
         ["OS==\"mac\"", {
           "defines": ["USE_FAKE_WIRING_PI"],
           "libraries!": ["-lwiringPi"],
