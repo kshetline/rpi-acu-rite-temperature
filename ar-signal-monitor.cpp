@@ -88,8 +88,9 @@ static const int TEMPERATURE_LAST_BIT =  47;
 
 static const int MAX_MONITORS = 10;
 
-static const int REPEAT_SUPPRESSION =    60; // 1 minute
-static const int REUSE_OLD_DATA_LIMIT = 600; // 10 minutes
+static const int REPEAT_SUPPRESSION =         60; // 1 minute
+static const int CACHE_REPEAT_SUPPRESSION =   60; // 15 seconds
+static const int REUSE_OLD_DATA_LIMIT =      600; // 10 minutes
 
 static const int SIGNAL_QUALITY_CHECK_RATE = 90; // 90 seconds
 static const int SIGNAL_QUALITY_WINDOW = 300000000; // 5 minutes
@@ -201,10 +202,11 @@ void ARTHSM::init(int dataPin, PinSystem pinSys) {
           sd.signalQuality = updateSignalQuality(sd.channel, now, RANK_CHECK);
 
           ARTHSM *sm = this;
+          SensorData sdCopy = sd;
 
-          thread([sm, sd]() {
+          thread([sm, sdCopy]() {
             sm->dispatchLock->lock();
-            sm->sendData(sd);
+            sm->sendData(sdCopy);
             sm->dispatchLock->unlock();
           }).detach();
         }
@@ -418,7 +420,11 @@ void ARTHSM::processMessage(unsigned long frameEndTime, int attempt) {
 
           if (sd.collectionTime < lastData.collectionTime + REPEAT_SUPPRESSION &&
               sd.hasSameValues(lastData))
-            doCallback = cacheNewData = false;
+            doCallback = false;
+
+          if (sd.collectionTime < lastData.collectionTime + CACHE_REPEAT_SUPPRESSION &&
+              sd.hasSameValues(lastData))
+            cacheNewData = false;
 
           if (!sd.validChecksum && lastData.validChecksum) {
             cacheNewData = false;
