@@ -4,8 +4,8 @@
       "target_name": "ar_signal_monitor",
       "cflags!": ["-fno-exceptions"],
       "cflags_cc!": ["-fno-exceptions"],
-      "cflags": ["-Wall", "-std=c++11", "-pthread"],
-      "cflags_cc": ["-Wall", "-pthread"],
+      "cflags": ["-Wall", "-Wno-psabi", "-std=c++11", "-pthread"],
+      "cflags_cc": ["-Wall", "-Wno-psabi", "-pthread"],
       "sources": [
         "ar-signal-monitor-node.cpp",
         "ar-signal-monitor-node.h",

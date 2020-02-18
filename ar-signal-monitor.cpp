@@ -199,16 +199,19 @@ void ARTHSM::init(int dataPin, PinSystem pinSys) {
         auto sd = it->second;
 
         if (sd.collectionTime + SIGNAL_QUALITY_CHECK_RATE < now / 1000000) {
+          int prevQuality = sd.signalQuality;
           sd.signalQuality = updateSignalQuality(sd.channel, now, RANK_CHECK);
 
-          ARTHSM *sm = this;
-          SensorData sdCopy = sd;
+          if (sd.signalQuality != prevQuality) {
+            ARTHSM *sm = this;
+            SensorData sdCopy = sd;
 
-          thread([sm, sdCopy]() {
-            sm->dispatchLock->lock();
-            sm->sendData(sdCopy);
-            sm->dispatchLock->unlock();
-          }).detach();
+            thread([sm, sdCopy]() {
+              sm->dispatchLock->lock();
+              sm->sendData(sdCopy);
+              sm->dispatchLock->unlock();
+            }).detach();
+          }
         }
 
         // Only send quality 0 once, then act as if the channel doesn't exist until signal is received again.
