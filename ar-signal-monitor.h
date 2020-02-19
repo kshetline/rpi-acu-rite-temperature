@@ -61,6 +61,7 @@ class ArTemperatureHumiditySignalMonitor {
     std::future<void> qualityCheckLoopControl;
     std::map<char, std::vector<TimeAndQuality>> qualityTracking;
     int sequentialBits = 0;
+    int badBits = 0;
     int potentialDataIndex = 0;
     int dataIndex = -1;
     int dataEndIndex = 0;

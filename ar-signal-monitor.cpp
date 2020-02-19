@@ -62,6 +62,7 @@ static const int MESSAGE_BITS =       56;
 static const int MIN_TRANSITIONS =    MESSAGE_BITS * 2;
 static const int IDEAL_TRANSITIONS =  MIN_TRANSITIONS + 2; // short sync high, long sync low
 static const int MAX_TRANSITIONS =    IDEAL_TRANSITIONS + 4; // small allowance for spurious noises
+static const int MAX_BAD_BITS =       5;
 
 static const int MIN_MESSAGE_LENGTH = MESSAGE_BITS * (SHORT_PULSE + LONG_PULSE) - TOLERANCE;
 static const int MAX_MESSAGE_LENGTH = MESSAGE_LENGTH + TOLERANCE;
@@ -339,8 +340,12 @@ void ARTHSM::signalHasChangedAux(unsigned long now) {
 
       gotBit = true;
     }
-    else
+    else {
       sequentialBits = 0;
+
+      if (!isShortSync(t0, t1) && !isLongSync(t0, t1))
+        ++badBits;
+    }
 
     int messageTime = now - frameStartTime;
 
@@ -356,14 +361,16 @@ void ARTHSM::signalHasChangedAux(unsigned long now) {
       }
 
       dataIndex = currentIndex;
+      badBits = 0;
       frameStartTime = now;
     }
-//    else if (dataIndex >= 0 && messageTime > MIN_MESSAGE_LENGTH + SHORT_SYNC_PULSE &&
-//             messageTime < MAX_MESSAGE_LENGTH) {
-//      dataEndIndex = timingIndex;
-//      processMessage(now);
-//      dataIndex = -1;
-//    }
+    else if (dataIndex >= 0 && badBits < MAX_BAD_BITS &&
+             messageTime > MIN_MESSAGE_LENGTH + SHORT_SYNC_PULSE &&
+             messageTime < MAX_MESSAGE_LENGTH) {
+      dataEndIndex = timingIndex;
+      processMessage(now);
+      dataIndex = -1;
+    }
   }
 
   signalLocks[callbackIndex].unlock();
@@ -505,6 +512,7 @@ void ARTHSM::processMessage(unsigned long frameEndTime, int attempt) {
     }).detach();
 
     dataIndex = -1;
+    badBits = 0;
   }
   else if (attempt == 0) {
     tryToCleanUpSignal();
