@@ -10,7 +10,6 @@
 
 static const int RING_BUFFER_SIZE = 512;
 
-#undef COLLECT_STATS
 #undef SHOW_RAW_DATA
 #undef SHOW_MARGINAL_DATA
 
@@ -61,9 +60,10 @@ class ArTemperatureHumiditySignalMonitor {
     std::promise<void> qualityCheckExitSignal;
     std::future<void> qualityCheckLoopControl;
     std::map<char, std::vector<TimeAndQuality>> qualityTracking;
-    int syncCount = 0;
-    int syncIndex1 = 0;
-    int syncIndex2 = 0;
+    int sequentialBits = 0;
+    int potentialDataIndex = 0;
+    int dataIndex = -1;
+    int dataEndIndex = 0;
     int timingIndex = -1;
     unsigned short timings[RING_BUFFER_SIZE] = {0};
 
@@ -82,13 +82,13 @@ class ArTemperatureHumiditySignalMonitor {
 
   private:
     DataIntegrity checkDataIntegrity();
+    void establishQualityCheck();
     int getBit(int offset);
     std::string getBitsAsString();
     int getInt(int firstBit, int lastBit);
     int getInt(int firstBit, int lastBit, bool skipParity);
     int getTiming(int offset);
-    bool isEndSyncAcquired();
-    bool isStartSyncAcquired();
+    bool isSyncAcquired();
     void processMessage(unsigned long frameEndTime);
     void processMessage(unsigned long frameEndTime, int attempt);
     void sendData(const SensorData &sd);
@@ -97,20 +97,10 @@ class ArTemperatureHumiditySignalMonitor {
     void tryToCleanUpSignal();
     int updateSignalQuality(char channel, unsigned long time, int rank);
 
-#ifdef COLLECT_STATS
-    unsigned long totalMessageTime = 0;
-    unsigned long totalMessages = 0;
-    unsigned long totalShortBitTime = 0;
-    unsigned long totalShortBits = 0;
-    unsigned long totalLongBitTime = 0;
-    unsigned long totalLongBits = 0;
-    unsigned long totalShortSyncTime = 0;
-    unsigned long totalShortSyncs = 0;
-    unsigned long totalPreLongSyncTime = 0;
-    unsigned long totalPreLongSyncs = 0;
-    unsigned long totalLongSyncTime = 0;
-    unsigned long totalLongSyncs = 0;
-#endif
+    static bool isZeroBit(int t0, int t1);
+    static bool isOneBit(int t0, int t1);
+    static bool isShortSync(int t0, int t1);
+    static bool isLongSync(int t0, int t1);
 };
 
 #endif

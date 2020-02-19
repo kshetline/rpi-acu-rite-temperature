@@ -56,14 +56,14 @@ static const int PRE_LONG_SYNC =      207;
 static const int LONG_SYNC_PULSE =   2205;
 static const int SHORT_SYNC_PULSE =   606;
 static const int TOLERANCE =          100;
-static const int LONG_SYNC_TOL =      250;
+static const int LONG_SYNC_TOL =      450;
 
-static const int TOTAL_BITS =         56;
-static const int MIN_TRANSITIONS =    TOTAL_BITS * 2;
+static const int MESSAGE_BITS =       56;
+static const int MIN_TRANSITIONS =    MESSAGE_BITS * 2;
 static const int IDEAL_TRANSITIONS =  MIN_TRANSITIONS + 2; // short sync high, long sync low
 static const int MAX_TRANSITIONS =    IDEAL_TRANSITIONS + 4; // small allowance for spurious noises
 
-static const int MIN_MESSAGE_LENGTH = TOTAL_BITS * (SHORT_PULSE + LONG_PULSE) - TOLERANCE;
+static const int MIN_MESSAGE_LENGTH = MESSAGE_BITS * (SHORT_PULSE + LONG_PULSE) - TOLERANCE;
 static const int MAX_MESSAGE_LENGTH = MESSAGE_LENGTH + TOLERANCE;
 
 static const int CHANNEL_FIRST_BIT =      0;
@@ -92,7 +92,7 @@ static const int REPEAT_SUPPRESSION =         60; // 1 minute
 static const int CACHE_REPEAT_SUPPRESSION =   60; // 15 seconds
 static const int REUSE_OLD_DATA_LIMIT =      600; // 10 minutes
 
-static const int SIGNAL_QUALITY_CHECK_RATE = 90; // 90 seconds
+static const int SIGNAL_QUALITY_CHECK_RATE =    90; // 90 seconds
 static const int SIGNAL_QUALITY_WINDOW = 300000000; // 5 minutes
 static const int DESIRED_SIGNAL_RATE =    30000000; // At least one channel update every 30 seconds
 static const int RANK_HIGH  = 4;
@@ -186,51 +186,111 @@ void ARTHSM::init(int dataPin, PinSystem pinSys) {
   if (callbackIndex < 0)
     throw "Maximum number of ArTemperatureHumiditySignalMonitor instances reached";
 
-  qualityCheckLoopControl = qualityCheckExitSignal.get_future();
-
-  thread([this]() {
-    while (qualityCheckLoopControl.wait_for(std::chrono::seconds(SIGNAL_QUALITY_CHECK_RATE)) == std::future_status::timeout) {
-      dispatchLock->lock();
-
-      auto now = micros();
-      auto it = lastSensorData.begin();
-
-      while (it != lastSensorData.end()) {
-        auto sd = it->second;
-
-        if (sd.collectionTime + SIGNAL_QUALITY_CHECK_RATE < now / 1000000) {
-          int prevQuality = sd.signalQuality;
-          sd.signalQuality = updateSignalQuality(sd.channel, now, RANK_CHECK);
-
-          if (sd.signalQuality != prevQuality) {
-            ARTHSM *sm = this;
-            SensorData sdCopy = sd;
-
-            thread([sm, sdCopy]() {
-              sm->dispatchLock->lock();
-              sm->sendData(sdCopy);
-              sm->dispatchLock->unlock();
-            }).detach();
-          }
-        }
-
-        // Only send quality 0 once, then act as if the channel doesn't exist until signal is received again.
-        if (sd.signalQuality == 0)
-          it = lastSensorData.erase(it);
-        else
-          ++it;
-      }
-
-      dispatchLock->unlock();
-    }
-  }).detach();
-
+  establishQualityCheck();
   this->dataPin = dataPin;
   wiringPiISR(dataPin, INT_EDGE_BOTH, smCallbacks[callbackIndex]);
 }
 
 int ARTHSM::getDataPin() {
   return dataPin;
+}
+
+int ARTHSM::addListener(VoidFunctionPtr callback) {
+  return addListener(callback, nullptr);
+}
+
+int ARTHSM::addListener(VoidFunctionPtr callback, void *data) {
+  clientCallbacks[++nextClientCallbackIndex] = make_pair(callback, data);
+
+  return nextClientCallbackIndex;
+}
+
+void ARTHSM::removeListener(int listenerId) {
+  clientCallbacks.erase(listenerId);
+}
+
+void ARTHSM::enableDebugOutput(bool state) {
+  debugOutput = state;
+}
+
+int ARTHSM::getTiming(int offset) {
+  return timings[mod(timingIndex + offset, RING_BUFFER_SIZE)];
+}
+
+// NOTE: getTiming() is relative to timingIndex, but setTiming() is relative to dataIndex.
+void ARTHSM::setTiming(int offset, unsigned short value) {
+  timings[mod(dataIndex + offset, RING_BUFFER_SIZE)] = value;
+}
+
+bool ARTHSM::isZeroBit(int t0, int t1) {
+    return (SHORT_PULSE - TOLERANCE < t0 && t0 < SHORT_PULSE + TOLERANCE &&
+            LONG_PULSE - TOLERANCE < t1 && t1 < LONG_PULSE + TOLERANCE);
+}
+
+bool ARTHSM::isOneBit(int t0, int t1) {
+    return (LONG_PULSE - TOLERANCE < t0 && t0 < LONG_PULSE + TOLERANCE &&
+            SHORT_PULSE - TOLERANCE < t1 && t1 < SHORT_PULSE + TOLERANCE);
+}
+
+bool ARTHSM::isShortSync(int t0, int t1) {
+    return (SHORT_SYNC_PULSE - TOLERANCE < t0 && t0 < SHORT_SYNC_PULSE + TOLERANCE &&
+            SHORT_SYNC_PULSE - TOLERANCE < t1 && t1 < SHORT_SYNC_PULSE + TOLERANCE);
+}
+
+bool ARTHSM::isLongSync(int t0, int t1) {
+    return (PRE_LONG_SYNC - TOLERANCE < t0 && t0 < PRE_LONG_SYNC + TOLERANCE &&
+            LONG_SYNC_PULSE - LONG_SYNC_TOL < t1 && t1 < LONG_SYNC_PULSE + LONG_SYNC_TOL);
+}
+
+bool ARTHSM::isSyncAcquired() {
+  int t0, t1;
+
+  for (int i = 0; i < 8; i += 2) {
+    t1 = getTiming(-i);
+    t0 = getTiming(-i - 1);
+
+    if (!isShortSync(t0, t1)) {
+      return false;
+    }
+  }
+
+  t0 = getTiming(-9);
+  t1 = getTiming(-8);
+
+  return isLongSync(t0, t1);
+}
+
+int ARTHSM::getBit(int offset) {
+  int t0 = timings[mod(dataIndex + offset * 2, RING_BUFFER_SIZE)];
+  int t1 = timings[mod(dataIndex + offset * 2 + 1, RING_BUFFER_SIZE)];
+
+  if (isZeroBit(t0, t1))
+    return 0;
+  else if (isOneBit(t0, t1))
+    return 1;
+
+  return -1;
+}
+
+int ARTHSM::getInt(int firstBit, int lastBit) {
+  return getInt(firstBit, lastBit, false);
+}
+
+int ARTHSM::getInt(int firstBit, int lastBit, bool skipParity) {
+  int result = 0;
+
+  for (int i = firstBit; i <= lastBit; ++i) {
+    int bit = getBit(i);
+
+    if (bit < 0)
+      return -1;
+    else if (skipParity && i % 8 == 0)
+      continue;
+
+    result = (result << 1) + bit;
+  }
+
+  return result;
 }
 
 void ARTHSM::signalHasChanged(int index) {
@@ -253,30 +313,60 @@ void ARTHSM::signalHasChangedAux(unsigned long now) {
   timingIndex = (timingIndex + 1) % RING_BUFFER_SIZE;
   timings[timingIndex] = duration;
 
-  if (syncCount == 0 && isStartSyncAcquired()) {
-    ++syncCount;
-    syncIndex1 = (timingIndex + 1) % RING_BUFFER_SIZE;
-    frameStartTime = now;
-  }
-  else if (syncCount == 1 && isEndSyncAcquired()) {
-    syncCount = 0;
-    syncIndex2 = (timingIndex + 1) % RING_BUFFER_SIZE;
+  if (digitalRead(dataPin) == HIGH) {
+    bool gotBit = false;
+    int t1 = duration;
+    int t0 = getTiming(-1);
+
+    if (isZeroBit(t0, t1) || isOneBit(t0, t1)) {
+      ++sequentialBits;
+
+      if (sequentialBits == 1) {
+        potentialDataIndex = mod(timingIndex - 1, RING_BUFFER_SIZE);
+        frameStartTime = now - t0 - t1;
+      }
+      else if (sequentialBits == MESSAGE_BITS) {
+        dataIndex = potentialDataIndex;
+        dataEndIndex = mod(timingIndex + 1, RING_BUFFER_SIZE);
+        processMessage(now);
+
+        if (sequentialBits != 0) { // Failed as good data?
+          --sequentialBits;
+          frameStartTime += getTiming(potentialDataIndex) + getTiming(potentialDataIndex + 1);
+          potentialDataIndex = (potentialDataIndex + 2) % RING_BUFFER_SIZE;
+        }
+      }
+
+      gotBit = true;
+    }
+    else
+      sequentialBits = 0;
 
     int messageTime = now - frameStartTime;
-    int changeCount = mod(syncIndex2 - syncIndex1, RING_BUFFER_SIZE);
 
-    if (MIN_TRANSITIONS <= changeCount && changeCount <= MAX_TRANSITIONS &&
-        MIN_MESSAGE_LENGTH <= messageTime && messageTime <= MAX_MESSAGE_LENGTH)
-    {
-      processMessage(now);
+    if (!gotBit && isSyncAcquired()) {
+      int currentIndex = (timingIndex + 1) % RING_BUFFER_SIZE;
+      int changeCount = mod(currentIndex - dataIndex, RING_BUFFER_SIZE);
+
+      if (dataIndex >= 0 &&
+          MIN_TRANSITIONS <= changeCount && changeCount <= MAX_TRANSITIONS &&
+          MIN_MESSAGE_LENGTH <= messageTime && messageTime <= MAX_MESSAGE_LENGTH) {
+        dataEndIndex = currentIndex;
+        processMessage(now);
+      }
+
+      dataIndex = currentIndex;
+      frameStartTime = now;
     }
+//    else if (dataIndex >= 0 && messageTime > MIN_MESSAGE_LENGTH + SHORT_SYNC_PULSE &&
+//             messageTime < MAX_MESSAGE_LENGTH) {
+//      dataEndIndex = timingIndex;
+//      processMessage(now);
+//      dataIndex = -1;
+//    }
   }
 
   signalLocks[callbackIndex].unlock();
-}
-
-void ARTHSM::enableDebugOutput(bool state) {
-  debugOutput = state;
 }
 
 string ARTHSM::getBitsAsString() {
@@ -319,48 +409,20 @@ void ARTHSM::processMessage(unsigned long frameEndTime, int attempt) {
   auto integrity = checkDataIntegrity();
   char channel = "?C?BA"[getInt(CHANNEL_FIRST_BIT, CHANNEL_LAST_BIT) + 1];
   string allBits = (debugOutput ? getBitsAsString() + " (" + to_string(frameEndTime - frameStartTime) + "µs)" : "");
-#if defined(COLLECT_STATS) || defined(SHOW_RAW_DATA) || defined(SHOW_MARGINAL_DATA)
+  string timestamp = (debugOutput ? getTimestamp() : "");
+#if defined(SHOW_RAW_DATA) || defined(SHOW_MARGINAL_DATA)
 #define TIMES_ARRAY_ARG , times, changeCount
-  int changeCount = mod(syncIndex2 - syncIndex1, RING_BUFFER_SIZE);
+  int changeCount = mod(dataEndIndex - dataIndex, RING_BUFFER_SIZE);
   int times[changeCount];
+
   for (int i = 0; i < changeCount; ++i)
-    times[i] = timings[(syncIndex1 + i) % RING_BUFFER_SIZE];
+    times[i] = timings[(dataIndex + i) % RING_BUFFER_SIZE];
 #else
-#define TIMES_ARRAY_ARG
+#define TIMES_ARRAY_ARG /* empty */
 #endif
 
   if (integrity > BAD_PARITY) {
-#ifdef COLLECT_STATS
-    if (integrity == GOOD) {
-      totalMessageTime += (frameEndTime - frameStartTime);
-      ++totalMessages;
-      for (int i = 0; i < changeCount; ++i) {
-        int t = times[i];
-        if (i < 112) {
-          if (t < LONG_PULSE - TOLERANCE)
-            totalShortBitTime += t;
-            ++totalShortBits;
-          }
-          else {
-            totalLongBitTime += t;
-            ++totalLongBits;
-          }
-        }
-        else if (i == 112) {
-          totalPreLongSyncTime += t;
-          ++totalPreLongSyncs;
-        }
-        else if (i == 113) {
-          totalLongSyncTime += t;
-          ++totalLongSyncs;
-        }
-        else if (i > 113) {
-          totalShortSyncTime += t;
-          ++totalShortSyncs;
-        }
-      }
-    }
-#endif
+    sequentialBits = 0;
 
     SensorData sd;
 
@@ -378,7 +440,7 @@ void ARTHSM::processMessage(unsigned long frameEndTime, int attempt) {
     sd.rawTemp = getInt(TEMPERATURE_FIRST_BIT, TEMPERATURE_LAST_BIT, true);
     sd.tempCelsius = (sd.rawTemp - 1000) / 10.0;
 
-    if (abs(sd.tempCelsius) > 100)
+    if (abs(sd.tempCelsius) > 60)
       sd.tempCelsius = -999;
 
     sd.tempFahrenheit = sd.tempCelsius == -999 ? -999 :
@@ -387,7 +449,7 @@ void ARTHSM::processMessage(unsigned long frameEndTime, int attempt) {
     sd.signalQuality = updateSignalQuality(sd.channel, frameEndTime,
       sd.validChecksum && sd.humidity != -999 && sd.rawTemp != -999 ? RANK_HIGH : RANK_MID);
 
-    thread([this, allBits, sd, attempt TIMES_ARRAY_ARG] {
+    thread([this, allBits, sd, attempt, timestamp TIMES_ARRAY_ARG] {
       dispatchLock->lock();
 
       if (debugOutput) {
@@ -397,28 +459,20 @@ void ARTHSM::processMessage(unsigned long frameEndTime, int attempt) {
           printf(i == 120 || (i + 2) % 8 == 0 ? "\n" : "   ");
         }
 #endif
-        cout << allBits << endl << getTimestamp();
+        cout << allBits << endl << timestamp;
         printf("%c channel %c, %d%%, %.1fC (%d raw), %.1fF, battery %s%s\n",
           sd.validChecksum ? ':' : '~', sd.channel,
           sd.humidity, sd.tempCelsius, sd.rawTemp, sd.tempFahrenheit,
           sd.batteryLow ? "LOW" : "good",
-          attempt > 0 ? "!" : "");
-#ifdef COLLECT_STATS
-        printf("Average message time: %.0fµs\n", totalMessageTime / max((double) totalMessages, 1.0));
-        printf("sb: %.1fµs, lb: %.1fµs, ps: %.1fµs, ls: %.1fµs, ss: %.1fµs\n",
-          totalShortBitTime / max((double) totalShortBits, 1.0),
-          totalLongBitTime / max((double) totalLongBits, 1.0),
-          totalPreLongSyncTime / max((double) totalPreLongSyncs, 1.0),
-          totalLongSyncTime / max((double) totalLongSyncs, 1.0),
-          totalShortSyncTime / max((double) totalShortSyncs, 1.0));
-#endif
+          attempt > 0 ? "^" : "");
       }
 
       if (sd.channel != '?') {
-        bool doCallback = true;
-        bool cacheNewData = true;
+        int channelActive = lastSensorData.count(sd.channel) > 0;
+        bool doCallback = channelActive || sd.validChecksum;
+        bool cacheNewData = doCallback;
 
-        if (lastSensorData.count(sd.channel) > 0) {
+        if (channelActive) {
           const SensorData lastData = lastSensorData[sd.channel];
 
           if (sd.collectionTime < lastData.collectionTime + REPEAT_SUPPRESSION &&
@@ -449,13 +503,15 @@ void ARTHSM::processMessage(unsigned long frameEndTime, int attempt) {
 
       dispatchLock->unlock();
     }).detach();
+
+    dataIndex = -1;
   }
   else if (attempt == 0) {
     tryToCleanUpSignal();
     processMessage(frameEndTime, 1);
   }
   else if (debugOutput) {
-    thread([this, allBits TIMES_ARRAY_ARG] {
+    thread([this, allBits, timestamp TIMES_ARRAY_ARG] {
 #ifdef SHOW_MARGINAL_DATA
       int b = 0;
       int tt = 0;
@@ -475,7 +531,7 @@ void ARTHSM::processMessage(unsigned long frameEndTime, int attempt) {
       }
 #endif
       dispatchLock->lock();
-      cout << allBits << endl << getTimestamp() << ": Corrupted data\n";
+      cout << allBits << endl << timestamp << ": Corrupted data\n";
       dispatchLock->unlock();
     }).detach();
   }
@@ -493,7 +549,7 @@ void ARTHSM::sendData(const SensorData &sd) {
 }
 
 void ARTHSM::tryToCleanUpSignal() {
-  const int totalSubBits = TOTAL_BITS * 3;
+  const int totalSubBits = MESSAGE_BITS * 3;
   const double subBitDuration = BIT_LENGTH / 3.0;
   double subBits[totalSubBits];
   int highLow = -1;
@@ -505,7 +561,7 @@ void ARTHSM::tryToCleanUpSignal() {
 
   while (subBitCount < totalSubBits) {
     if (availableTime < 0.01) {
-      availableTime = timings[mod(syncIndex1 + timeOffset++, RING_BUFFER_SIZE)];
+      availableTime = timings[mod(dataIndex + timeOffset++, RING_BUFFER_SIZE)];
       highLow *= -1;
     }
 
@@ -516,7 +572,7 @@ void ARTHSM::tryToCleanUpSignal() {
     availableTime -= nextTimeChunk;
 
     if (abs(accumulatedTime - subBitDuration) < 0.01 ||
-       (syncIndex1 + timeOffset) % RING_BUFFER_SIZE == syncIndex2)
+       (dataIndex + timeOffset) % RING_BUFFER_SIZE == dataEndIndex)
     {
       subBits[subBitCount++] = accumulatedWeight;
       accumulatedTime = accumulatedWeight = 0;
@@ -590,25 +646,34 @@ int ARTHSM::updateSignalQuality(char channel, unsigned long time, int rank) {
     return 0;
 
   vector<TimeAndQuality> recents;
+  bool channelActive = false;
+  int siblingRank = -1;
 
   if (qualityTracking.count(channel) > 0) {
+    channelActive = true;
     recents = qualityTracking[channel];
 
-    // Purge old info
+    // Purge old data, or very recent data (from the same 3-message repeat) of lesser or equal quality)
     auto it = recents.begin();
 
     while (it != recents.end()) {
-      if (it->first + SIGNAL_QUALITY_WINDOW < time)
+      unsigned long dataTime = it->first;
+
+      if (dataTime + MESSAGE_LENGTH * 4 > time)
+        siblingRank = it->second;
+
+      if (dataTime + SIGNAL_QUALITY_WINDOW < time || (siblingRank >= 0 && siblingRank <= rank))
         it = recents.erase(it);
       else
         ++it;
     }
   }
 
-  if (rank != RANK_CHECK)
+  if (rank != RANK_CHECK && (siblingRank < 0 || siblingRank < rank))
     recents.push_back({ time, rank });
 
-  qualityTracking[channel] = recents;
+  if (channelActive || rank == RANK_HIGH) // Only track low-quality data for an active channel
+    qualityTracking[channel] = recents;
 
   auto it = recents.begin();
   int total = 0;
@@ -621,98 +686,6 @@ int ARTHSM::updateSignalQuality(char channel, unsigned long time, int rank) {
   int desiredTotal = max((int) (SIGNAL_QUALITY_WINDOW / DESIRED_SIGNAL_RATE), (int) recents.size()) * RANK_HIGH;
 
   return min((int) round(total * 100.0 / desiredTotal), 100);
-}
-
-int ARTHSM::addListener(VoidFunctionPtr callback) {
-  return addListener(callback, nullptr);
-}
-
-int ARTHSM::addListener(VoidFunctionPtr callback, void *data) {
-  clientCallbacks[++nextClientCallbackIndex] = make_pair(callback, data);
-
-  return nextClientCallbackIndex;
-}
-
-void ARTHSM::removeListener(int listenerId) {
-  clientCallbacks.erase(listenerId);
-}
-
-int ARTHSM::getTiming(int offset) {
-  return timings[mod(timingIndex + offset, RING_BUFFER_SIZE)];
-}
-
-// NOTE: getTiming() is relative to timingIndex, but setTiming() is relative to syncIndex1.
-void ARTHSM::setTiming(int offset, unsigned short value) {
-  timings[mod(syncIndex1 + offset, RING_BUFFER_SIZE)] = value;
-}
-
-bool ARTHSM::isStartSyncAcquired() {
-  if (digitalRead(dataPin) != HIGH)
-    return false;
-
-  for (int i = 0; i < 8; i += 2) {
-    int t1 = getTiming(-i);
-    int t0 = getTiming(-i - 1);
-
-    if (t0 < SHORT_SYNC_PULSE - TOLERANCE || t0 > SHORT_SYNC_PULSE + TOLERANCE ||
-        t1 < SHORT_SYNC_PULSE - TOLERANCE || t1 > SHORT_SYNC_PULSE + TOLERANCE) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-bool ARTHSM::isEndSyncAcquired() {
-  if (digitalRead(dataPin) != HIGH)
-    return false;
-
-  int t = getTiming(0);
-
-  if (t < LONG_SYNC_PULSE - LONG_SYNC_TOL)
-    return false;
-
-  t = getTiming(-1);
-
-  if (t < PRE_LONG_SYNC - TOLERANCE || t > PRE_LONG_SYNC + TOLERANCE)
-    return false;
-
-  return true;
-}
-
-int ARTHSM::getBit(int offset) {
-  int t0 = timings[mod(syncIndex1 + offset * 2, RING_BUFFER_SIZE)];
-  int t1 = timings[mod(syncIndex1 + offset * 2 + 1, RING_BUFFER_SIZE)];
-
-  if (t0 + t1 < SHORT_PULSE + LONG_PULSE + TOLERANCE * 2 &&
-      SHORT_PULSE - TOLERANCE < t0 && t0 < LONG_PULSE + TOLERANCE &&
-      SHORT_PULSE - TOLERANCE < t1 && t1 < LONG_PULSE + TOLERANCE)
-  {
-    return t0 > t1 ? 1 : 0;
-  }
-
-  return -1;
-}
-
-int ARTHSM::getInt(int firstBit, int lastBit) {
-  return getInt(firstBit, lastBit, false);
-}
-
-int ARTHSM::getInt(int firstBit, int lastBit, bool skipParity) {
-  int result = 0;
-
-  for (int i = firstBit; i <= lastBit; ++i) {
-    int bit = getBit(i);
-
-    if (bit < 0)
-      return -1;
-    else if (skipParity && i % 8 == 0)
-      continue;
-
-    result = (result << 1) + bit;
-  }
-
-  return result;
 }
 
 ARTHSM::DataIntegrity ARTHSM::checkDataIntegrity() {
@@ -740,6 +713,51 @@ ARTHSM::DataIntegrity ARTHSM::checkDataIntegrity() {
     checksum += getInt(byte * 8, byte * 8 + 7);
 
   return (checksum & 0xFF) == getInt(48, 55) ? GOOD : BAD_CHECKSUM;
+}
+
+void ARTHSM::establishQualityCheck() {
+
+  qualityCheckLoopControl = qualityCheckExitSignal.get_future();
+
+  thread([this]() {
+    while (qualityCheckLoopControl.wait_for(std::chrono::seconds(SIGNAL_QUALITY_CHECK_RATE)) == std::future_status::timeout) {
+      dispatchLock->lock();
+
+      auto now = micros();
+      auto it = lastSensorData.begin();
+
+      while (it != lastSensorData.end()) {
+        auto sd = it->second;
+
+        if (sd.collectionTime + SIGNAL_QUALITY_CHECK_RATE < now / 1000000) {
+          int prevQuality = sd.signalQuality;
+          sd.signalQuality = updateSignalQuality(sd.channel, now, RANK_CHECK);
+
+          if (sd.signalQuality != prevQuality) {
+            ARTHSM *sm = this;
+            SensorData sdCopy = sd;
+
+            thread([sm, sdCopy]() {
+              sm->dispatchLock->lock();
+              sm->sendData(sdCopy);
+              sm->dispatchLock->unlock();
+            }).detach();
+          }
+        }
+
+        // Only send quality 0 once, then act as if the channel doesn't exist until signal is received again.
+        if (sd.signalQuality == 0) {
+          it = lastSensorData.erase(it);
+          lastSensorData.erase(sd.channel);
+          qualityTracking.erase(sd.channel);
+        }
+        else
+          ++it;
+      }
+
+      dispatchLock->unlock();
+    }
+  }).detach();
 }
 
 bool ARTHSM::SensorData::hasSameValues(const SensorData &sd) const {
