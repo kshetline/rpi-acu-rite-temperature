@@ -26,9 +26,11 @@
 
 #include "ar-signal-monitor.h"
 
+#include <fstream>
 #include <functional>
 #include <iomanip>
 #include <iostream>
+#include <regex>
 #include <stdlib.h>
 #include <sys/time.h>
 #include <tgmath.h>
@@ -36,27 +38,21 @@
 #include <time.h>
 #include <unistd.h>
 
-#ifndef USE_FAKE_WIRING_PI
-#include <wiringPi.h>
-#else
-#include "wiring-pi-fake.h"
-#endif
-
 using namespace std;
 
 #define ARTHSM ArTemperatureHumiditySignalMonitor
 
 // Signal timings in microseconds
-static const int MESSAGE_LENGTH =   39052; // 56 data bits plus short sync high, long sync low
 // 0 bit is short high followed by long low, 1 bit is long high, short low.
-static const int SHORT_PULSE =        210;
-static const int LONG_PULSE =         401;
-static const int BIT_LENGTH =         SHORT_PULSE + LONG_PULSE;
-static const int PRE_LONG_SYNC =      207;
-static const int LONG_SYNC_PULSE =   2205;
-static const int SHORT_SYNC_PULSE =   606;
-static const int TOLERANCE =          100;
-static const int LONG_SYNC_TOL =      450;
+static const int SHORT_PULSE =         210;
+static const int LONG_PULSE =          401;
+static const int BIT_LENGTH =          SHORT_PULSE + LONG_PULSE;
+static const int THIRD_OF_A_BIT =      BIT_LENGTH / 3;
+static const int PRE_LONG_SYNC =       207;
+static const int LONG_SYNC_PULSE =    2205;
+static const int SHORT_SYNC_PULSE =    606;
+static const int TOLERANCE =           100;
+static const int LONG_SYNC_TOL =       450;
 
 static const int MESSAGE_BITS =       56;
 static const int MIN_TRANSITIONS =    MESSAGE_BITS * 2;
@@ -64,8 +60,10 @@ static const int IDEAL_TRANSITIONS =  MIN_TRANSITIONS + 2; // short sync high, l
 static const int MAX_TRANSITIONS =    IDEAL_TRANSITIONS + 4; // small allowance for spurious noises
 static const int MAX_BAD_BITS =       5;
 
-static const int MIN_MESSAGE_LENGTH = MESSAGE_BITS * (SHORT_PULSE + LONG_PULSE) - TOLERANCE;
-static const int MAX_MESSAGE_LENGTH = MESSAGE_LENGTH + TOLERANCE;
+static const int MESSAGE_LENGTH =    MESSAGE_BITS * (SHORT_PULSE + LONG_PULSE);
+static const int SYNC_TO_SYNC_TIME = MESSAGE_LENGTH + PRE_LONG_SYNC + LONG_SYNC_PULSE + SHORT_SYNC_PULSE * 8;
+static const int MIN_MESSAGE_LENGTH = MESSAGE_LENGTH - TOLERANCE;
+static const int MAX_MESSAGE_LENGTH = SYNC_TO_SYNC_TIME + TOLERANCE;
 
 static const int CHANNEL_FIRST_BIT =      0;
 static const int CHANNEL_LAST_BIT =       1;
@@ -87,8 +85,6 @@ static const int MISC_DATA_3_LAST_BIT =  35;
 static const int TEMPERATURE_FIRST_BIT = 36;
 static const int TEMPERATURE_LAST_BIT =  47;
 
-static const int MAX_MONITORS = 10;
-
 static const int REPEAT_SUPPRESSION =         60; // 1 minute
 static const int CACHE_REPEAT_SUPPRESSION =   60; // 15 seconds
 static const int REUSE_OLD_DATA_LIMIT =      600; // 10 minutes
@@ -101,17 +97,16 @@ static const int RANK_MID   = 2;
 static const int RANK_LOW   = 1;
 static const int RANK_CHECK = 0;
 
+long ARTHSM::extendedMicroTime = 0;
 bool ARTHSM::initialSetupDone = false;
-ARTHSM::PinSystem ARTHSM::pinSystem = (ARTHSM::PinSystem) -1;
-int ARTHSM::callbackIndex = 0;
+uint32_t ARTHSM::lastMicroTimeU32 = 0;
+int ARTHSM::nextClientCallbackIndex = 0;
+bool ARTHSM::pinInUse[32] = {false};
+int ARTHSM::pinsInUse = 0;
+bool ARTHSM::supportPhysPins = false;
 
-ARTHSM::PinSystem ARTHSM::getPinSystem() {
-  return pinSystem;
-}
-
-static ARTHSM* monitors[MAX_MONITORS] = { nullptr };
-static mutex signalLocks[MAX_MONITORS];
-extern void (*smCallbacks[MAX_MONITORS])();
+static mutex dispatchLocks[32];
+static mutex signalLocks[32];
 
 static int mod(int x, int y) {
   int m = x % y;
@@ -124,72 +119,69 @@ static int mod(int x, int y) {
 }
 
 ARTHSM::ArTemperatureHumiditySignalMonitor() {
-  dispatchLock = new mutex();
 }
 
 ARTHSM::~ArTemperatureHumiditySignalMonitor() {
-  signalLocks[callbackIndex].lock();
+  if (dataPin >= 0) {
+    gpioSetAlertFunc(dataPin, nullptr); // stop pin signal callbacks
+    dispatchLocks[dataPin].lock();
+    qualityCheckExitSignal.set_value();
+    dispatchLocks[dataPin].unlock();
+    pinInUse[dataPin] = false;
 
-  if (callbackIndex >= 0)
-    monitors[callbackIndex] = nullptr;
-
-  if (dataPin >= 0)
-    pinMode(dataPin, INPUT); // stop pin signal callbacks
-
-  signalLocks[callbackIndex].unlock();
-
-  dispatchLock->lock();
-  qualityCheckExitSignal.set_value();
-  dispatchLock->unlock();
-
-  auto dLock = dispatchLock;
-
-  thread([dLock]() {
-    this_thread::sleep_for(std::chrono::milliseconds(250));
-    delete dLock;
-  }).detach();
+    if (--pinsInUse == 0 && initialSetupDone) {
+      gpioTerminate();
+      initialSetupDone = false;
+    }
+  }
 }
 
 void ARTHSM::init(int dataPin) {
   init(dataPin, PinSystem::VIRTUAL);
 }
 
+static int RPI_3_4_PHYS[] =
+  {
+    -1, // 0
+    -1, -1,  2, -1,  3, -1,  4, 14, -1, 15, // 1-10
+    17, 18, 27, -1, 22, 23, -1, 24, 10, -1, // 11-20
+     9, 25, 11,  8, -1,  7,  0,  1,  5, -1, // 21-30
+     6, 12, 13, -1, 19, 16, 26, 20, -1, 21  // 31-40
+  };
+
 void ARTHSM::init(int dataPin, PinSystem pinSys) {
-  if (pinSystem >= PinSystem::SYS && pinSys != pinSystem)
-    throw "WiringPi pin numbering system cannot be changed";
+  if (!initialSetupDone)
+    checkRaspberryPiRev();
+
+  if (pinSys == PinSystem::PHYS) {
+    if (!supportPhysPins)
+      throw "Physical pin numbering not supported";
+    else if (dataPin < 1 || dataPin > 40)
+      dataPin = -1;
+    else
+      dataPin = RPI_3_4_PHYS[dataPin];
+  }
+
+  if (dataPin < 0 || dataPin > 31)
+    throw "Invalid pin number";
+
+  if (pinInUse[dataPin])
+    throw "Pin already in use";
 
   if (!initialSetupDone) {
-    pinSystem = pinSys;
-
-    int setUpResult;
-
-    switch (pinSystem) {
-      case PinSystem::GPIO:    setUpResult = wiringPiSetupGpio(); break;
-      case PinSystem::PHYS:    setUpResult = wiringPiSetupPhys(); break;
-      case PinSystem::SYS:     setUpResult = wiringPiSetupSys(); break;
-      default:                 setUpResult = wiringPiSetup(); break;
-    }
-
-    if (setUpResult < 0)
+    if (gpioInitialise() == PI_INIT_FAILED)
       throw "WiringPi could not be set up";
 
     initialSetupDone = true;
   }
 
-  for (int i = 0; i < MAX_MONITORS; ++i) {
-    if (monitors[i] == nullptr) {
-      callbackIndex = i;
-      monitors[i] = this;
-      break;
-    }
-  }
-
-  if (callbackIndex < 0)
-    throw "Maximum number of ArTemperatureHumiditySignalMonitor instances reached";
-
   establishQualityCheck();
   this->dataPin = dataPin;
-  wiringPiISR(dataPin, INT_EDGE_BOTH, smCallbacks[callbackIndex]);
+  pinInUse[dataPin] = true;
+  ++pinsInUse;
+  gpioSetMode(dataPin, PI_INPUT);
+  gpioGlitchFilter(dataPin, 100);
+  gpioSetAlertFuncEx(dataPin, signalHasChanged, this);
 }
 
 int ARTHSM::getDataPin() {
@@ -212,6 +204,19 @@ void ARTHSM::removeListener(int listenerId) {
 
 void ARTHSM::enableDebugOutput(bool state) {
   debugOutput = state;
+}
+
+long ARTHSM::micros() {
+  return micros(gpioTick());
+}
+
+long ARTHSM::micros(uint32_t microTimeU32) {
+  if (microTimeU32 < lastMicroTimeU32)
+    extendedMicroTime += 0x100000000;
+
+  lastMicroTimeU32 = microTimeU32;
+
+  return extendedMicroTime + microTimeU32;
 }
 
 int ARTHSM::getTiming(int offset) {
@@ -294,27 +299,45 @@ int ARTHSM::getInt(int firstBit, int lastBit, bool skipParity) {
   return result;
 }
 
-void ARTHSM::signalHasChanged(int index) {
-  unsigned long now = micros();
-  ARTHSM *sm;
+void ARTHSM::signalHasChanged(int dataPin, int level, unsigned int tick, void *userData) {
+  if ((level != PI_LOW && level != PI_HIGH) || !pinInUse[dataPin])
+    return;
 
-  signalLocks[index].lock();
-  sm = monitors[index];
+  signalLocks[dataPin].lock();
 
-  if (sm != nullptr)
-    sm->signalHasChangedAux(now);
+  if (userData != nullptr)
+    ((ARTHSM*) userData)->signalHasChangedAux(micros(tick), level);
   else
-    signalLocks[index].unlock();
+    signalLocks[dataPin].unlock();
 }
 
-void ARTHSM::signalHasChangedAux(unsigned long now) {
-  unsigned short duration = min(now - lastSignalChange, 10000ul);
+void ARTHSM::signalHasChangedAux(long now, int pinState) {
+  if (pinState == lastPinState) {
+    signalLocks[dataPin].unlock();
+    return;
+  }
+
+  lastPinState = pinState;
+
+  unsigned short duration = min(now - lastSignalChange, 10000l);
 
   lastSignalChange = now;
   timingIndex = (timingIndex + 1) % RING_BUFFER_SIZE;
   timings[timingIndex] = duration;
 
-  if (digitalRead(dataPin) == HIGH) {
+  if (pinState == PI_HIGH) {
+    int currentIndex = (timingIndex + 1) % RING_BUFFER_SIZE;
+
+    if (syncTime2 >= 0 && now > syncTime2 + SYNC_TO_SYNC_TIME + LONG_SYNC_TOL &&
+        findStartOfTriplet() && combineMessages())
+    {
+      cout << "Successful triple message blend\n";
+      dataIndex = syncIndex2;
+      dataEndIndex = currentIndex;
+      processMessage(now);
+      syncTime1 = syncTime2 = -1;
+    }
+
     bool gotBit = false;
     int t1 = duration;
     int t0 = getTiming(-1);
@@ -350,7 +373,15 @@ void ARTHSM::signalHasChangedAux(unsigned long now) {
     int messageTime = now - frameStartTime;
 
     if (!gotBit && isSyncAcquired()) {
-      int currentIndex = (timingIndex + 1) % RING_BUFFER_SIZE;
+      if (syncTime1 < 0 || abs(now - syncTime1 - SYNC_TO_SYNC_TIME) < LONG_SYNC_TOL) {
+        syncTime1 = now;
+        syncIndex1 = currentIndex;
+      }
+      else {
+        syncTime2 = now;
+        syncIndex2 = currentIndex;
+      }
+
       int changeCount = mod(currentIndex - dataIndex, RING_BUFFER_SIZE);
 
       if (dataIndex >= 0 &&
@@ -373,7 +404,7 @@ void ARTHSM::signalHasChangedAux(unsigned long now) {
     }
   }
 
-  signalLocks[callbackIndex].unlock();
+  signalLocks[dataPin].unlock();
 }
 
 string ARTHSM::getBitsAsString() {
@@ -408,11 +439,11 @@ string getTimestamp() {
   return string(buf);
 }
 
-void ARTHSM::processMessage(unsigned long frameEndTime) {
+void ARTHSM::processMessage(long frameEndTime) {
   processMessage(frameEndTime, 0);
 }
 
-void ARTHSM::processMessage(unsigned long frameEndTime, int attempt) {
+void ARTHSM::processMessage(long frameEndTime, int attempt) {
   auto integrity = checkDataIntegrity();
   char channel = "?C?BA"[getInt(CHANNEL_FIRST_BIT, CHANNEL_LAST_BIT) + 1];
   string allBits = (debugOutput ? getBitsAsString() + " (" + to_string(frameEndTime - frameStartTime) + "µs)" : "");
@@ -457,7 +488,7 @@ void ARTHSM::processMessage(unsigned long frameEndTime, int attempt) {
       sd.validChecksum && sd.humidity != -999 && sd.rawTemp != -999 ? RANK_HIGH : RANK_MID);
 
     thread([this, allBits, sd, attempt, timestamp TIMES_ARRAY_ARG] {
-      dispatchLock->lock();
+      dispatchLocks[dataPin].lock();
 
       if (debugOutput) {
 #ifdef SHOW_RAW_DATA
@@ -508,7 +539,7 @@ void ARTHSM::processMessage(unsigned long frameEndTime, int attempt) {
           lastSensorData[sd.channel] = sd;
       }
 
-      dispatchLock->unlock();
+      dispatchLocks[dataPin].unlock();
     }).detach();
 
     dataIndex = -1;
@@ -538,9 +569,9 @@ void ARTHSM::processMessage(unsigned long frameEndTime, int attempt) {
           printf("\n");
       }
 #endif
-      dispatchLock->lock();
+#ifdef SHOW_CORRUPT_DATA
       cout << allBits << endl << timestamp << ": Corrupted data\n";
-      dispatchLock->unlock();
+#endif
     }).detach();
   }
   else if (integrity == BAD_PARITY)
@@ -556,9 +587,8 @@ void ARTHSM::sendData(const SensorData &sd) {
   }
 }
 
-void ARTHSM::tryToCleanUpSignal() {
+bool ARTHSM::tryToCleanUpSignal() {
   const int totalSubBits = MESSAGE_BITS * 3;
-  const double subBitDuration = BIT_LENGTH / 3.0;
   double subBits[totalSubBits];
   int highLow = -1;
   int timeOffset = 0;
@@ -573,13 +603,13 @@ void ARTHSM::tryToCleanUpSignal() {
       highLow *= -1;
     }
 
-    double nextTimeChunk = min(availableTime, subBitDuration - accumulatedTime);
+    double nextTimeChunk = min(availableTime, THIRD_OF_A_BIT - accumulatedTime);
 
     accumulatedTime += nextTimeChunk;
     accumulatedWeight += nextTimeChunk * highLow;
     availableTime -= nextTimeChunk;
 
-    if (abs(accumulatedTime - subBitDuration) < 0.01 ||
+    if (abs(accumulatedTime - THIRD_OF_A_BIT) < 0.01 ||
        (dataIndex + timeOffset) % RING_BUFFER_SIZE == dataEndIndex)
     {
       subBits[subBitCount++] = accumulatedWeight;
@@ -647,9 +677,138 @@ void ARTHSM::tryToCleanUpSignal() {
       }
     }
   }
+
+  return true;
 }
 
-int ARTHSM::updateSignalQuality(char channel, unsigned long time, int rank) {
+bool ARTHSM::combineMessages() {
+  const int totalSubBits = MESSAGE_BITS * 3;
+  double subBits[totalSubBits];
+  int badBit = -1;
+  int checksum1 = 0;
+  int checksum2 = 0;
+  int msgIndices[] = { baseIndex, syncIndex1, syncIndex2 };
+
+  for (int m = 0; m < 3; ++m) {
+    int msgIndex = msgIndices[m];
+    int highLow = -1;
+    int timeOffset = 0;
+    int subBitCount = 0;
+    double accumulatedTime = 0;
+    double accumulatedWeight = 0;
+    double availableTime = 0;
+
+    while (subBitCount < totalSubBits) {
+      if (availableTime < 0.01) {
+        availableTime = timings[mod(msgIndex + timeOffset++, RING_BUFFER_SIZE)];
+        highLow *= -1;
+      }
+
+      double nextTimeChunk = min(availableTime, THIRD_OF_A_BIT - accumulatedTime);
+
+      accumulatedTime += nextTimeChunk;
+      accumulatedWeight += nextTimeChunk * highLow;
+      availableTime -= nextTimeChunk;
+
+      if (abs(accumulatedTime - THIRD_OF_A_BIT) < 0.01 ||
+         (msgIndex + timeOffset) % RING_BUFFER_SIZE == dataEndIndex)
+      {
+        subBits[subBitCount++] = accumulatedWeight;
+        accumulatedTime = accumulatedWeight = 0;
+      }
+    }
+
+    if (m < 2)
+      continue;
+
+    timeOffset = 0;
+    badBit = -1;
+    checksum1 = 0;
+    checksum2 = 0;
+
+    for (int i = 0; i < totalSubBits; i += 3) {
+      int bitIndex = i / 3;
+      double s0 = subBits[i];
+      double s1 = subBits[i + 1];
+      double s2 = subBits[i + 2];
+
+      if (s0 > 0 && s1 > 0 && s2 < 0) { // 1 bit
+        setTiming(timeOffset++, LONG_PULSE);
+        setTiming(timeOffset++, SHORT_PULSE);
+
+        int bitPlaceValue = 1 << (7 - bitIndex % 8);
+
+        if (bitIndex < 48)
+          checksum1 += bitPlaceValue;
+        else
+          checksum2 += bitPlaceValue;
+      }
+      else if (s0 > 0 && s1 < 0 && s2 < 0) { // 0 bit
+        setTiming(timeOffset++, SHORT_PULSE);
+        setTiming(timeOffset++, LONG_PULSE);
+      }
+      else {
+        setTiming(timeOffset++, 0); // deliberate bad data
+        setTiming(timeOffset++, 0);
+
+        // Attempt to correct only single-bit failures
+        if (badBit < 0)
+          badBit = bitIndex;
+        else {
+          badBit = -2;
+          break;
+        }
+      }
+    }
+  }
+
+  if (badBit >= 0) {
+    if (checksum1 == checksum2) { // bad bit is 0
+      setTiming(badBit * 2, SHORT_PULSE);
+      setTiming(badBit * 2 + 1, LONG_PULSE);
+    }
+    else {
+      int bitPlaceValue = 1 << (7 - badBit % 8);
+
+      if (badBit < 48)
+        checksum1 += bitPlaceValue;
+      else
+        checksum2 += bitPlaceValue;
+
+      if (checksum1 == checksum2) { // bad bit is 1
+        setTiming(badBit * 2, LONG_PULSE);
+        setTiming(badBit * 2 + 1, SHORT_PULSE);
+      }
+    }
+  }
+
+  return (checksum1 == checksum2 && badBit >= -1);
+}
+
+bool ARTHSM::findStartOfTriplet() {
+  baseIndex = syncIndex1;
+  baseTime = syncTime1;
+  int tries = 0;
+
+  while (baseIndex > syncTime1 - SYNC_TO_SYNC_TIME) {
+    baseTime -= timings[baseIndex = mod(baseIndex - 1, RING_BUFFER_SIZE)];
+    baseTime -= timings[baseIndex = mod(baseIndex - 1, RING_BUFFER_SIZE)];
+
+    if (++tries >= RING_BUFFER_SIZE / 3) {
+      baseIndex = -1;
+      return false;
+    }
+  }
+
+  if (baseTime < syncTime1 - SYNC_TO_SYNC_TIME - BIT_LENGTH / 2) {
+    baseTime += timings[baseIndex = (baseIndex + 1) % RING_BUFFER_SIZE];
+    baseTime += timings[baseIndex = (baseIndex + 1) % RING_BUFFER_SIZE];
+  }
+
+  return true;
+}
+
+int ARTHSM::updateSignalQuality(char channel, long time, int rank) {
   if (channel == '?')
     return 0;
 
@@ -665,7 +824,7 @@ int ARTHSM::updateSignalQuality(char channel, unsigned long time, int rank) {
     auto it = recents.begin();
 
     while (it != recents.end()) {
-      unsigned long dataTime = it->first;
+      long dataTime = it->first;
 
       if (dataTime + MESSAGE_LENGTH * 4 > time)
         siblingRank = it->second;
@@ -729,9 +888,9 @@ void ARTHSM::establishQualityCheck() {
 
   thread([this]() {
     while (qualityCheckLoopControl.wait_for(std::chrono::seconds(SIGNAL_QUALITY_CHECK_RATE)) == std::future_status::timeout) {
-      dispatchLock->lock();
+      dispatchLocks[dataPin].lock();
 
-      auto now = micros();
+      long now = micros();
       auto it = lastSensorData.begin();
 
       while (it != lastSensorData.end()) {
@@ -746,9 +905,9 @@ void ARTHSM::establishQualityCheck() {
             SensorData sdCopy = sd;
 
             thread([sm, sdCopy]() {
-              sm->dispatchLock->lock();
+              dispatchLocks[sm->dataPin].lock();
               sm->sendData(sdCopy);
-              sm->dispatchLock->unlock();
+              dispatchLocks[sm->dataPin].unlock();
             }).detach();
           }
         }
@@ -763,13 +922,32 @@ void ARTHSM::establishQualityCheck() {
           ++it;
       }
 
-      dispatchLock->unlock();
+      dispatchLocks[dataPin].unlock();
     }
   }).detach();
 }
 
+void ARTHSM::checkRaspberryPiRev() {
+  ifstream revFile("/proc/cpuinfo");
+
+  if (!revFile || !revFile.is_open())
+    return;
+
+  string line;
+  regex revPattern("^Revision\\s*:\\s*[a-c][\\dd]{5}$");
+
+  while (getline(revFile, line)) {
+    if (regex_match(line, revPattern)) {
+      supportPhysPins = true;
+      break;
+    }
+  }
+
+  revFile.close();
+}
+
 bool ARTHSM::SensorData::hasSameValues(const SensorData &sd) const {
-  // Assumption in made that derived values tempCelsius and tempFahrenheit are
+  // Assumption is made that derived values tempCelsius and tempFahrenheit are
   // consistent with rawTemp.
   return channel == sd.channel &&
          batteryLow == sd.batteryLow &&
@@ -783,19 +961,3 @@ bool ARTHSM::SensorData::hasCloseValues(const SensorData &sd) const {
          abs(humidity - sd.humidity) < 3 &&
          abs(rawTemp - sd.rawTemp) < 30;
 }
-
-static void smCallback0() { ARTHSM::signalHasChanged(0); }
-static void smCallback1() { ARTHSM::signalHasChanged(1); }
-static void smCallback2() { ARTHSM::signalHasChanged(2); }
-static void smCallback3() { ARTHSM::signalHasChanged(3); }
-static void smCallback4() { ARTHSM::signalHasChanged(4); }
-static void smCallback5() { ARTHSM::signalHasChanged(5); }
-static void smCallback6() { ARTHSM::signalHasChanged(6); }
-static void smCallback7() { ARTHSM::signalHasChanged(7); }
-static void smCallback8() { ARTHSM::signalHasChanged(8); }
-static void smCallback9() { ARTHSM::signalHasChanged(9); }
-
-void (*smCallbacks[MAX_MONITORS])() = {
-  smCallback0, smCallback1, smCallback2, smCallback3, smCallback4,
-  smCallback5, smCallback6, smCallback7, smCallback8, smCallback9
-};

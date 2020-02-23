@@ -20,18 +20,18 @@
         "/usr/local/include/node"
       ],
       "libraries": [
-        "-lwiringPi"
+        "-lpigpio"
       ],
       "defines": ["NAPI_CPP_EXCEPTIONS"],
       "conditions": [
         ["OS==\"mac\"", {
-          "defines": ["USE_FAKE_WIRING_PI"],
-          "libraries!": ["-lwiringPi"],
+          "defines": ["USE_FAKE_PIGPIO"],
+          "libraries!": ["-lpigpio"],
           "xcode_settings": {"GCC_ENABLE_CPP_EXCEPTIONS": "YES"}
         }],
         ["OS==\"win\"", {
-          "defines": ["USE_FAKE_WIRING_PI"],
-          "libraries!": ["-lwiringPi"]
+          "defines": ["USE_FAKE_PIGPIO"],
+          "libraries!": ["-lpigpio"]
         }],
       ],
     }

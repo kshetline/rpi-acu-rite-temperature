@@ -8,10 +8,18 @@
 #include <utility>
 #include <vector>
 
+//#ifndef USE_FAKE_WIRING_PI
+//#include <wiringPi.h>
+//#else
+//#include "wiring-pi-fake.h"
+//#endif
+#include <pigpio.h>
+
 static const int RING_BUFFER_SIZE = 512;
 
 #undef SHOW_RAW_DATA
 #undef SHOW_MARGINAL_DATA
+#undef SHOW_CORRUPT_DATA
 
 class ArTemperatureHumiditySignalMonitor {
   public:
@@ -22,7 +30,7 @@ class ArTemperatureHumiditySignalMonitor {
       public:
         bool batteryLow;
         char channel;
-        unsigned int collectionTime;
+        long collectionTime;
         int humidity;
         int miscData1;
         int miscData2;
@@ -38,25 +46,27 @@ class ArTemperatureHumiditySignalMonitor {
     };
 
    private:
+    static long extendedMicroTime;
     static bool initialSetupDone;
-    static PinSystem pinSystem;
-    static int callbackIndex;
+    static uint32_t lastMicroTimeU32;
+    static int nextClientCallbackIndex;
+    static bool pinInUse[];
+    static int pinsInUse;
+    static bool supportPhysPins;
 
     enum DataIntegrity { BAD_BITS, BAD_PARITY, BAD_CHECKSUM, GOOD };
 
     typedef void (*VoidFunctionPtr)(SensorData sensorData, void *miscData);
     typedef void *VoidPtr;
     typedef std::pair<VoidFunctionPtr, VoidPtr> ClientCallback;
-    typedef std::pair<unsigned long, int> TimeAndQuality;
+    typedef std::pair<long, int> TimeAndQuality;
 
     std::map<int, ClientCallback> clientCallbacks;
     int dataPin = -1;
     bool debugOutput = false;
-    std::mutex *dispatchLock;
     std::map<char, SensorData> lastSensorData;
-    unsigned long lastSignalChange = 0;
-    unsigned long frameStartTime = 0;
-    int nextClientCallbackIndex = 0;
+    long lastSignalChange = 0;
+    long frameStartTime = 0;
     std::promise<void> qualityCheckExitSignal;
     std::future<void> qualityCheckLoopControl;
     std::map<char, std::vector<TimeAndQuality>> qualityTracking;
@@ -66,6 +76,13 @@ class ArTemperatureHumiditySignalMonitor {
     int dataIndex = -1;
     int dataEndIndex = 0;
     int timingIndex = -1;
+    int baseIndex = 0;
+    long baseTime = -1;
+    int syncIndex1 = 0;
+    long syncTime1 = -1;
+    int syncIndex2 = 0;
+    long syncTime2 = -1;
+    int lastPinState = -1;
     unsigned short timings[RING_BUFFER_SIZE] = {0};
 
   public:
@@ -79,25 +96,30 @@ class ArTemperatureHumiditySignalMonitor {
     int getDataPin();
     void enableDebugOutput(bool state);
     void removeListener(int listenerId);
-    void static signalHasChanged(int index);
+    void static signalHasChanged(int dataPin, int level, unsigned int tick, void *userData);
 
   private:
     DataIntegrity checkDataIntegrity();
+    void checkRaspberryPiRev();
+    bool combineMessages();
     void establishQualityCheck();
+    bool findStartOfTriplet();
     int getBit(int offset);
     std::string getBitsAsString();
     int getInt(int firstBit, int lastBit);
     int getInt(int firstBit, int lastBit, bool skipParity);
     int getTiming(int offset);
     bool isSyncAcquired();
-    void processMessage(unsigned long frameEndTime);
-    void processMessage(unsigned long frameEndTime, int attempt);
+    void processMessage(long frameEndTime);
+    void processMessage(long frameEndTime, int attempt);
     void sendData(const SensorData &sd);
     void setTiming(int offset, unsigned short value);
-    void signalHasChangedAux(unsigned long now);
-    void tryToCleanUpSignal();
-    int updateSignalQuality(char channel, unsigned long time, int rank);
+    void signalHasChangedAux(long now, int pinState);
+    bool tryToCleanUpSignal();
+    int updateSignalQuality(char channel, long time, int rank);
 
+    static long micros();
+    static long micros(uint32_t microTimeU32);
     static bool isZeroBit(int t0, int t1);
     static bool isOneBit(int t0, int t1);
     static bool isShortSync(int t0, int t1);
