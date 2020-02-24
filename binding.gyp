@@ -29,11 +29,13 @@
         ["OS==\"mac\"", {
           "defines": ["USE_FAKE_PIGPIO"],
           "libraries!": ["-lpigpio"],
+          "sources": ["pigpio-fake.cpp", "pigpio-fake.h"],
           "xcode_settings": {"GCC_ENABLE_CPP_EXCEPTIONS": "YES"}
         }],
         ["OS==\"win\"", {
           "defines": ["USE_FAKE_PIGPIO"],
-          "libraries!": ["-lpigpio"]
+          "libraries!": ["-lpigpio"],
+          "sources": ["pigpio-fake.cpp", "pigpio-fake.h"]
         }],
       ],
     }

@@ -48,11 +48,10 @@ While it's best for `validChecksum` to be `true`, any data provided has at least
 
 ### addSensorDataListener
 
-This function is used to register a callback that receives the above temperature/humidity data. You must specify the input `pin` to which your [433 MHz RF receiver](https://www.amazon.com/gp/product/B00HEDRHG6/) is connected, and optionally specify a pin numbering system. The default is `PinSystem.VIRTUAL`, which is the default pin numbering system used by _WiringPi_. Optionally you may use:
+This function is used to register a callback that receives the above temperature/humidity data. You must specify the input `pin` to which your [433 MHz RF receiver](https://www.amazon.com/gp/product/B00HEDRHG6/) is connected, and optionally specify a pin numbering system. The default is `PinSystem.GPIO`. Optionally you may use:
 
-* `PinSystem.SYS`: _/sys/class/gpio_ interface pin numbers. (s)
-* `PinSystem.GPIO`: Broadcom GPIO pin numbers. (g)
 * `PinSystem.PHYS`: physical pin numbers on the P1 connector. (p)
+* `PinSystem.WIRING_PI`: WiringPi pin numbers (w)
 
 _For more information see: http://wiringpi.com/reference/setup/_
 
