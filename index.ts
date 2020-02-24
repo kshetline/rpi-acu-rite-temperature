@@ -14,7 +14,7 @@ export interface HtSensorData {
   validChecksum: boolean; // Is the data fully trustworthy?
 }
 
-export enum PinSystem { VIRTUAL, SYS, GPIO, PHYS }
+export enum PinSystem { GPIO, PHYS, WIRING_PI }
 
 export type HtSensorDataCallback = (data: HtSensorData) => void;
 
@@ -23,12 +23,12 @@ export function addSensorDataListener(pin: number, pinSystem: PinSystem, callbac
 export function addSensorDataListener(pin: number | string, pinSysOrCallback: PinSystem | HtSensorDataCallback,
                                       callback?: HtSensorDataCallback): number {
   let pinNumber: number;
-  let pinSystem = PinSystem.VIRTUAL;
+  let pinSystem = PinSystem.GPIO;
 
   if (typeof pin === 'string') {
     pinNumber = parseFloat(pin) || 2;
-    const pinSystemIndex = 'sgp'.indexOf(pin.substr(-1).toLowerCase()) + 1;
-    pinSystem = [PinSystem.VIRTUAL, PinSystem.SYS, PinSystem.GPIO, PinSystem.PHYS][pinSystemIndex];
+    const pinSystemIndex = 'pw'.indexOf(pin.substr(-1).toLowerCase()) + 1;
+    pinSystem = [PinSystem.GPIO, PinSystem.PHYS, PinSystem.WIRING_PI][pinSystemIndex];
   }
   else
     pinNumber = pin;

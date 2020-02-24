@@ -567,108 +567,23 @@ void ARTHSM::sendData(const SensorData &sd) {
 }
 
 bool ARTHSM::tryToCleanUpSignal() {
-  const int totalSubBits = MESSAGE_BITS * 3;
-  double subBits[totalSubBits];
-  int highLow = -1;
-  int timeOffset = 0;
-  int subBitCount = 0;
-  double accumulatedTime = 0;
-  double accumulatedWeight = 0;
-  double availableTime = 0;
-
-  while (subBitCount < totalSubBits) {
-    if (availableTime < 0.01) {
-      availableTime = timings[mod(dataIndex + timeOffset++, RING_BUFFER_SIZE)];
-      highLow *= -1;
-    }
-
-    double nextTimeChunk = min(availableTime, THIRD_OF_A_BIT - accumulatedTime);
-
-    accumulatedTime += nextTimeChunk;
-    accumulatedWeight += nextTimeChunk * highLow;
-    availableTime -= nextTimeChunk;
-
-    if (abs(accumulatedTime - THIRD_OF_A_BIT) < 0.01 ||
-       (dataIndex + timeOffset) % RING_BUFFER_SIZE == dataEndIndex)
-    {
-      subBits[subBitCount++] = accumulatedWeight;
-      accumulatedTime = accumulatedWeight = 0;
-    }
-  }
-
-  timeOffset = 0;
-
-  int badBit = -1;
-  int checksum1 = 0;
-  int checksum2 = 0;
-
-  for (int i = 0; i < totalSubBits; i += 3) {
-    int bitIndex = i / 3;
-    double s0 = subBits[i];
-    double s1 = subBits[i + 1];
-    double s2 = subBits[i + 2];
-
-    if (s0 > 0 && s1 > 0 && s2 < 0) { // 1 bit
-      setTiming(timeOffset++, LONG_PULSE);
-      setTiming(timeOffset++, SHORT_PULSE);
-
-      int bitPlaceValue = 1 << (7 - bitIndex % 8);
-
-      if (bitIndex < 48)
-        checksum1 += bitPlaceValue;
-      else
-        checksum2 += bitPlaceValue;
-    }
-    else if (s0 > 0 && s1 < 0 && s2 < 0) { // 0 bit
-      setTiming(timeOffset++, SHORT_PULSE);
-      setTiming(timeOffset++, LONG_PULSE);
-    }
-    else {
-      setTiming(timeOffset++, 0); // deliberate bad data
-      setTiming(timeOffset++, 0);
-
-      // Attempt to correct only single-bit failures
-      if (badBit < 0)
-        badBit = bitIndex;
-      else {
-        badBit = -2;
-        break;
-      }
-    }
-  }
-
-  if (badBit >= 0) {
-    if (checksum1 == checksum2) { // bad bit is 0
-      setTiming(badBit * 2, SHORT_PULSE);
-      setTiming(badBit * 2 + 1, LONG_PULSE);
-    }
-    else {
-      int bitPlaceValue = 1 << (7 - badBit % 8);
-
-      if (badBit < 48)
-        checksum1 += bitPlaceValue;
-      else
-        checksum2 += bitPlaceValue;
-
-      if (checksum1 == checksum2) { // bad bit is 1
-        setTiming(badBit * 2, LONG_PULSE);
-        setTiming(badBit * 2 + 1, SHORT_PULSE);
-      }
-    }
-  }
-
-  return true;
+  int msgIndices[] = { dataIndex };
+  return combineMessages(1, msgIndices);
 }
 
 bool ARTHSM::combineMessages() {
+  int msgIndices[] = { baseIndex, syncIndex1, syncIndex2 };
+  return combineMessages(3, msgIndices);
+}
+
+bool ARTHSM::combineMessages(int count, int *msgIndices) {
   const int totalSubBits = MESSAGE_BITS * 3;
   double subBits[totalSubBits];
   int badBit = -1;
   int checksum1 = 0;
   int checksum2 = 0;
-  int msgIndices[] = { baseIndex, syncIndex1, syncIndex2 };
 
-  for (int m = 0; m < 3; ++m) {
+  for (int m = 0; m < count; ++m) {
     int msgIndex = msgIndices[m];
     int highLow = -1;
     int timeOffset = 0;
@@ -697,7 +612,7 @@ bool ARTHSM::combineMessages() {
       }
     }
 
-    if (m < 2)
+    if (m < count - 1)
       continue;
 
     timeOffset = 0;

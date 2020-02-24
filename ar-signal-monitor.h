@@ -97,6 +97,7 @@ class ArTemperatureHumiditySignalMonitor {
   private:
     DataIntegrity checkDataIntegrity();
     bool combineMessages();
+    bool combineMessages(int count, int *msgIndices);
     void establishQualityCheck();
     bool findStartOfTriplet();
     int getBit(int offset);

@@ -10,7 +10,9 @@
         "ar-signal-monitor-node.cpp",
         "ar-signal-monitor-node.h",
         "ar-signal-monitor.cpp",
-        "ar-signal-monitor.h"
+        "ar-signal-monitor.h",
+        "pin-conversions.cpp",
+        "pin-conversions.h"
       ],
       "include_dirs": [
         "<!(node -e \"require('node-addon-api').include\")",
