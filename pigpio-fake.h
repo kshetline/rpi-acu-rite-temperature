@@ -187,5 +187,6 @@ PGF_SUPPRESS_UNUSED_WARN(gpioSetAlertFunc)
 static uint32_t gpioTick() {
   return pgfCurrMicros;
 }
+PGF_SUPPRESS_UNUSED_WARN(gpioTick)
 
 #endif
