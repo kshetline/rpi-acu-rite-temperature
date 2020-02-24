@@ -12,6 +12,8 @@
 #define PI_LOW 0
 #define PI_HIGH 1
 
+#define PGF_SUPPRESS_UNUSED_WARN(fn) void *_pgf_suw_##fn = ((void *) fn);
+
 static const int PGF_SHORT_PULSE =        210;
 static const int PGF_LONG_PULSE =         401;
 static const int PGF_PRE_LONG_SYNC =      207;
@@ -136,18 +138,22 @@ static int gpioInitialise() {
 
   return 0;
 }
+PGF_SUPPRESS_UNUSED_WARN(gpioInitialise)
 
 static void gpioSetMode(int dataPin, int mode) {
   // do nothing
 }
+PGF_SUPPRESS_UNUSED_WARN(gpioSetMode)
 
 static void gpioGlitchFilter(int pin, int time) {
   // do nothing
 }
+PGF_SUPPRESS_UNUSED_WARN(gpioGlitchFilter)
 
 static void gpioTerminate() {
   // do nothing
 }
+PGF_SUPPRESS_UNUSED_WARN(gpioTerminate)
 
 static void gpioSetAlertFuncEx(int dataPin,
     void (*callback)(int dataPin, int level, unsigned int tick, void *userData), void *miscData) {
@@ -176,6 +182,7 @@ static void gpioSetAlertFunc(int dataPin,
     void (*callback)(int dataPin, int level, unsigned int tick, void *userData)) {
   gpioSetAlertFuncEx(dataPin, callback, nullptr);
 }
+PGF_SUPPRESS_UNUSED_WARN(gpioSetAlertFunc)
 
 static uint32_t gpioTick() {
   return pgfCurrMicros;

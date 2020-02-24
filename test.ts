@@ -5,7 +5,7 @@ let pin = '';
 for (let i = 0; i < process.argv.length - 1 && !pin; ++i)
   pin = process.argv[i] === '-p' ? process.argv[i + 1]?.toLowerCase().trim() : '';
 
-pin = pin || '2';
+pin = pin || '27';
 console.log(`Awaiting humidity/temperature data on pin ${pin}...`);
 
 const id = addSensorDataListener(pin, data => {

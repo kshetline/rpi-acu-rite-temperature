@@ -4,6 +4,8 @@
 #include <iostream>
 #include <regex>
 
+#define PCONV_SUPPRESS_UNUSED_WARN(fn) void *_pconv_suw_##fn = ((void *) fn);
+
 using namespace std;
 
 // Pin conversions below taken from WiringPi
@@ -142,7 +144,7 @@ int convertPinToGpio(int pinNumber, PinSystem pinSys) {
     if (revFile && revFile.is_open()) {
       string line;
       smatch match;
-      regex revPattern("^Revision\\s*:\\s*\\w+(\\w{4})$");
+      regex revPattern("^Revision\\s*:\\s*\\w*(\\w{4})$");
 
       while (getline(revFile, line)) {
         if (regex_match(line, match, revPattern)) {
@@ -186,3 +188,4 @@ int convertPinToGpio(int pinNumber, PinSystem pinSys) {
 
   return -1;
 }
+PCONV_SUPPRESS_UNUSED_WARN(convertPinToGpio)

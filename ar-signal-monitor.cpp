@@ -529,7 +529,7 @@ void ARTHSM::processMessage(long frameEndTime, int attempt) {
     processMessage(frameEndTime, 1);
   }
   else if (debugOutput) {
-    thread([this, allBits, timestamp TIMES_ARRAY_ARG] {
+    thread([allBits, timestamp TIMES_ARRAY_ARG] {
 #ifdef SHOW_MARGINAL_DATA
       int b = 0;
       int tt = 0;
