@@ -26,11 +26,10 @@
 
 #include "ar-signal-monitor.h"
 
-#include <fstream>
 #include <functional>
 #include <iomanip>
 #include <iostream>
-#include <regex>
+#include "pin-conversions.h"
 #include <stdlib.h>
 #include <sys/time.h>
 #include <tgmath.h>
@@ -103,7 +102,6 @@ uint32_t ARTHSM::lastMicroTimeU32 = 0;
 int ARTHSM::nextClientCallbackIndex = 0;
 bool ARTHSM::pinInUse[32] = {false};
 int ARTHSM::pinsInUse = 0;
-bool ARTHSM::supportPhysPins = false;
 
 static mutex dispatchLocks[32];
 static mutex signalLocks[32];
@@ -137,32 +135,13 @@ ARTHSM::~ArTemperatureHumiditySignalMonitor() {
 }
 
 void ARTHSM::init(int dataPin) {
-  init(dataPin, PinSystem::VIRTUAL);
+  init(dataPin, PinSystem::GPIO);
 }
 
-static int RPI_3_4_PHYS[] =
-  {
-    -1, // 0
-    -1, -1,  2, -1,  3, -1,  4, 14, -1, 15, // 1-10
-    17, 18, 27, -1, 22, 23, -1, 24, 10, -1, // 11-20
-     9, 25, 11,  8, -1,  7,  0,  1,  5, -1, // 21-30
-     6, 12, 13, -1, 19, 16, 26, 20, -1, 21  // 31-40
-  };
-
 void ARTHSM::init(int dataPin, PinSystem pinSys) {
-  if (!initialSetupDone)
-    checkRaspberryPiRev();
+  dataPin = convertPinToGpio(dataPin, pinSys);
 
-  if (pinSys == PinSystem::PHYS) {
-    if (!supportPhysPins)
-      throw "Physical pin numbering not supported";
-    else if (dataPin < 1 || dataPin > 40)
-      dataPin = -1;
-    else
-      dataPin = RPI_3_4_PHYS[dataPin];
-  }
-
-  if (dataPin < 0 || dataPin > 31)
+  if (dataPin < 0)
     throw "Invalid pin number";
 
   if (pinInUse[dataPin])
@@ -925,25 +904,6 @@ void ARTHSM::establishQualityCheck() {
       dispatchLocks[dataPin].unlock();
     }
   }).detach();
-}
-
-void ARTHSM::checkRaspberryPiRev() {
-  ifstream revFile("/proc/cpuinfo");
-
-  if (!revFile || !revFile.is_open())
-    return;
-
-  string line;
-  regex revPattern("^Revision\\s*:\\s*[a-c][\\dd]{5}$");
-
-  while (getline(revFile, line)) {
-    if (regex_match(line, revPattern)) {
-      supportPhysPins = true;
-      break;
-    }
-  }
-
-  revFile.close();
 }
 
 bool ARTHSM::SensorData::hasSameValues(const SensorData &sd) const {

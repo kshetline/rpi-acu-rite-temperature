@@ -8,12 +8,12 @@
 #include <utility>
 #include <vector>
 
-//#ifndef USE_FAKE_WIRING_PI
-//#include <wiringPi.h>
-//#else
-//#include "wiring-pi-fake.h"
-//#endif
+#ifndef USE_FAKE_PIGPIO
 #include <pigpio.h>
+#else
+#include "pigpio-fake.h"
+#endif
+#include "pin-conversions.h"
 
 static const int RING_BUFFER_SIZE = 512;
 
@@ -23,9 +23,6 @@ static const int RING_BUFFER_SIZE = 512;
 
 class ArTemperatureHumiditySignalMonitor {
   public:
-    enum PinSystem { VIRTUAL, SYS, GPIO, PHYS };
-    static PinSystem getPinSystem();
-
     class SensorData {
       public:
         bool batteryLow;
@@ -45,14 +42,13 @@ class ArTemperatureHumiditySignalMonitor {
         bool hasCloseValues(const SensorData &sd) const;
     };
 
-   private:
+  private:
     static long extendedMicroTime;
     static bool initialSetupDone;
     static uint32_t lastMicroTimeU32;
     static int nextClientCallbackIndex;
     static bool pinInUse[];
     static int pinsInUse;
-    static bool supportPhysPins;
 
     enum DataIntegrity { BAD_BITS, BAD_PARITY, BAD_CHECKSUM, GOOD };
 
@@ -100,7 +96,6 @@ class ArTemperatureHumiditySignalMonitor {
 
   private:
     DataIntegrity checkDataIntegrity();
-    void checkRaspberryPiRev();
     bool combineMessages();
     void establishQualityCheck();
     bool findStartOfTriplet();
