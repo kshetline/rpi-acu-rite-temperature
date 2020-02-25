@@ -155,7 +155,9 @@ ARTHSM::~ArTemperatureHumiditySignalMonitor() {
     pinInUse[oldPin] = false;
 
     if (--pinsInUse == 0 && initialSetupDone) {
+      cout << "Terminating pigpio\n";
       gpioTerminate();
+      cout << "pigpio terminated\n";
       initialSetupDone = false;
     }
   }
@@ -175,9 +177,14 @@ void ARTHSM::init(int dataPin, PinSystem pinSys) {
     throw "Pin already in use";
 
   if (!initialSetupDone) {
-    if (gpioInitialise() == PI_INIT_FAILED)
-      throw "WiringPi could not be set up";
+    cout << "Initializing pigpio\n";
 
+    if (gpioInitialise() == PI_INIT_FAILED) {
+      cerr << "Failed to initialize pigpio\n";
+      throw "WiringPi could not be set up";
+    }
+
+    cout << "pigpio initialized\n";
     initialSetupDone = true;
   }
 
