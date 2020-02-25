@@ -10,6 +10,12 @@ _This library was inspired by work originally done by [Ray Wang](http://rayshobb
 
 Full functionality requires a Raspberry Pi, but this code can be installed and compiled under MacOS (and perhaps Windows as well — not yet verified) in such a way that it returns simulated data for testing and development use.
 
+---
+> **Breaking changes:**
+>
+> As of version 2.0.0, `rpi-acu-rite-temperature` uses the `pigpio` library instead of `wiringPi` for GPIO functionality. This greatly improves the reliability of signal processing, but requires running code with elevated privileges (via `sudo`, or otherwise as root). Pin numbering now defaults to Broadcom GPIO numbering, `wiringPi` numbering is available using `PinSystem.WIRING_PI`, and `PinSystem.SYS` is not available.
+---
+
 ### Installation
 
 `npm install rpi-acu-rite-temperature`
@@ -48,10 +54,10 @@ While it's best for `validChecksum` to be `true`, any data provided has at least
 
 ### addSensorDataListener
 
-This function is used to register a callback that receives the above temperature/humidity data. You must specify the input `pin` to which your [433 MHz RF receiver](https://www.amazon.com/gp/product/B00HEDRHG6/) is connected, and optionally specify a pin numbering system. The default is `PinSystem.GPIO`. Optionally you may use:
+This function is used to register a callback that receives the above temperature/humidity data. You must specify the input `pin` to which your [433 MHz RF receiver](https://www.amazon.com/gp/product/B00HEDRHG6/) is connected, and optionally specify a pin numbering system. The default is `PinSystem.GPIO`, for Broadcom GPIO numbers. Optionally you may use:
 
-* `PinSystem.PHYS`: physical pin numbers on the P1 connector. (p)
-* `PinSystem.WIRING_PI`: WiringPi pin numbers (w)
+* `PinSystem.PHYS`: physical pin numbers on the P1 connector (1-40) or Rev. 2 P5 connector (53-56 for P5 3-6) (string suffix `p`)
+* `PinSystem.WIRING_PI`: WiringPi pin numbers (string suffix `w`)
 
 _For more information see: http://wiringpi.com/reference/setup/_
 

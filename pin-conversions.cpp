@@ -8,7 +8,7 @@
 
 using namespace std;
 
-// Pin conversions below taken from WiringPi
+// Pin conversion tables below taken from Gordon Henderson's WiringPi
 
 // Revision 1, 1.1:
 
@@ -52,7 +52,7 @@ static int *wpiToGpio = wpiToGpioR2;
 // physToGpio:
 //	Take a physical pin (1 through 26/40) and re-map it to the BCM_GPIO pin
 //	Cope for 2 different board revisions here.
-//	For P5 connector, P5 pin numbers are offset by 50, i.e. 1, 2, 3 => 51, 52, 53
+//	For P5 connector, P5 pin numbers are offset by 50, i.e. 3, 4, 5, 6 => 53, 54, 55, 56
 
 static int physToGpioR1[64] =
 {
@@ -113,13 +113,18 @@ static int physToGpioR2[64] =
 
 // P5 connector on Rev 2 boards:
 
-  28, 29, // 51, 52 (P5-1, P5-2)
-  30, 31,
+ // Note: The original code had GPIO 28 and 29 here, 30 and 31 on the next line,
+ // mapping positions 51-54 to P5 3-6. I believe this was an error, and moved
+ // the GPIO numbers forward by two positions accordingly.
   -1, -1,
-  -1, -1,
-  -1, -1,
+  28, 29, // 53, 54 (P5-3, P5-4)
+  30, 31, // 55, 56 (P5-5, P5-6)
   -1, -1,
 
+// Filler:
+
+  -1, -1,
+  -1, -1,
   -1
 } ;
 

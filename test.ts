@@ -27,8 +27,11 @@ const id = addSensorDataListener(pin, data => {
   console.log(timeStamp, formatted);
 });
 
-process.on('SIGINT', () => {
+function cleanUp() {
   removeSensorDataListener(id);
   console.log();
   process.exit(0);
-});
+}
+
+process.on('SIGINT', cleanUp);
+process.on('SIGTERM', cleanUp);
