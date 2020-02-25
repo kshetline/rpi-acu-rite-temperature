@@ -59,10 +59,11 @@ static const int IDEAL_TRANSITIONS =  MIN_TRANSITIONS + 2; // short sync high, l
 static const int MAX_TRANSITIONS =    IDEAL_TRANSITIONS + 4; // small allowance for spurious noises
 static const int MAX_BAD_BITS =       5;
 
-static const int MESSAGE_LENGTH =    MESSAGE_BITS * (SHORT_PULSE + LONG_PULSE);
-static const int SYNC_TO_SYNC_TIME = MESSAGE_LENGTH + PRE_LONG_SYNC + LONG_SYNC_PULSE + SHORT_SYNC_PULSE * 8;
+static const int MESSAGE_LENGTH =     MESSAGE_BITS * (SHORT_PULSE + LONG_PULSE);
+static const int SYNC_TO_SYNC_TIME =  MESSAGE_LENGTH + PRE_LONG_SYNC + LONG_SYNC_PULSE + SHORT_SYNC_PULSE * 8;
 static const int MIN_MESSAGE_LENGTH = MESSAGE_LENGTH - TOLERANCE;
 static const int MAX_MESSAGE_LENGTH = SYNC_TO_SYNC_TIME + TOLERANCE;
+static const int MESSAGE_HOLD_TIME =  SYNC_TO_SYNC_TIME * 3 + LONG_SYNC_TOL;
 
 static const int CHANNEL_FIRST_BIT =      0;
 static const int CHANNEL_LAST_BIT =       1;
@@ -84,18 +85,20 @@ static const int MISC_DATA_3_LAST_BIT =  35;
 static const int TEMPERATURE_FIRST_BIT = 36;
 static const int TEMPERATURE_LAST_BIT =  47;
 
-static const int REPEAT_SUPPRESSION =         60; // 1 minute
-static const int CACHE_REPEAT_SUPPRESSION =   60; // 15 seconds
-static const int REUSE_OLD_DATA_LIMIT =      600; // 10 minutes
+static const int REPEAT_SUPPRESSION =    60'000'000; // 1 minute
+static const int REUSE_OLD_DATA_LIMIT = 600'000'000; // 10 minutes
 
-static const int SIGNAL_QUALITY_CHECK_RATE =    90; // 90 seconds
-static const int SIGNAL_QUALITY_WINDOW = 300000000; // 5 minutes
-static const int DESIRED_SIGNAL_RATE =    30000000; // At least one channel update every 30 seconds
-static const int RANK_HIGH  = 4;
-static const int RANK_MID   = 2;
-static const int RANK_LOW   = 1;
-static const int RANK_CHECK = 0;
+static const int SIGNAL_QUALITY_CHECK_RATE =  90'000'000; // 90 seconds
+static const int SIGNAL_QUALITY_WINDOW =     300'000'000; // 5 minutes
+static const int DESIRED_SIGNAL_RATE =        30'000'000; // At least one channel update every 30 seconds
 
+static const int RANK_BEST  = 10;
+static const int RANK_HIGH  =  9;
+static const int RANK_MID   =  5;
+static const int RANK_LOW   =  2;
+static const int RANK_CHECK =  0;
+
+long ARTHSM::baseMicroTime = -1;
 long ARTHSM::extendedMicroTime = 0;
 bool ARTHSM::initialSetupDone = false;
 uint32_t ARTHSM::lastMicroTimeU32 = 0;
@@ -104,6 +107,7 @@ bool ARTHSM::pinInUse[32] = {false};
 int ARTHSM::pinsInUse = 0;
 
 static mutex dispatchLocks[32];
+static mutex queueLocks[32];
 static mutex signalLocks[32];
 
 static int mod(int x, int y) {
@@ -121,11 +125,34 @@ ARTHSM::ArTemperatureHumiditySignalMonitor() {
 
 ARTHSM::~ArTemperatureHumiditySignalMonitor() {
   if (dataPin >= 0) {
-    gpioSetAlertFunc(dataPin, nullptr); // stop pin signal callbacks
-    dispatchLocks[dataPin].lock();
+    int oldPin = dataPin;
+
+    dataPin = -1;
+    gpioSetAlertFunc(oldPin, nullptr);
+
+    dispatchLocks[oldPin].lock();
+    heldDataExitSignal.set_value();
     qualityCheckExitSignal.set_value();
-    dispatchLocks[dataPin].unlock();
-    pinInUse[dataPin] = false;
+    dispatchLocks[oldPin].unlock();
+
+    queueLocks[oldPin].lock();
+    bool locked = true;
+
+    if (holdThread) {
+      if (holdingRecentData) {
+        queueLocks[oldPin].unlock();
+        locked = false;
+        heldDataExitSignal.set_value();
+      }
+
+      holdThread->join();
+      delete holdThread;
+    }
+
+    if (locked)
+      queueLocks[oldPin].unlock();
+
+    pinInUse[oldPin] = false;
 
     if (--pinsInUse == 0 && initialSetupDone) {
       gpioTerminate();
@@ -154,10 +181,11 @@ void ARTHSM::init(int dataPin, PinSystem pinSys) {
     initialSetupDone = true;
   }
 
-  establishQualityCheck();
-  this->dataPin = dataPin;
-  pinInUse[dataPin] = true;
   ++pinsInUse;
+  pinInUse[dataPin] = true;
+  this->dataPin = dataPin;
+
+  establishQualityCheck();
   gpioSetMode(dataPin, PI_INPUT);
   gpioGlitchFilter(dataPin, 100);
   gpioSetAlertFuncEx(dataPin, signalHasChanged, this);
@@ -190,12 +218,15 @@ long ARTHSM::micros() {
 }
 
 long ARTHSM::micros(uint32_t microTimeU32) {
+  if (baseMicroTime < 0)
+    baseMicroTime = microTimeU32;
+
   if (microTimeU32 < lastMicroTimeU32)
-    extendedMicroTime += 0x100000000;
+    extendedMicroTime += 0x1'0000'0000;
 
   lastMicroTimeU32 = microTimeU32;
 
-  return extendedMicroTime + microTimeU32;
+  return extendedMicroTime - baseMicroTime + microTimeU32;
 }
 
 int ARTHSM::getTiming(int offset) {
@@ -284,7 +315,7 @@ void ARTHSM::signalHasChanged(int dataPin, int level, unsigned int tick, void *u
 
   signalLocks[dataPin].lock();
 
-  if (userData != nullptr)
+  if (userData != nullptr && ((ARTHSM*) userData)->dataPin >= 0)
     ((ARTHSM*) userData)->signalHasChangedAux(micros(tick), level);
   else
     signalLocks[dataPin].unlock();
@@ -310,7 +341,6 @@ void ARTHSM::signalHasChangedAux(long now, int pinState) {
     if (syncTime2 >= 0 && now > syncTime2 + SYNC_TO_SYNC_TIME + LONG_SYNC_TOL &&
         findStartOfTriplet() && combineMessages())
     {
-      cout << "Successful triple message blend\n";
       dataIndex = syncIndex2;
       dataEndIndex = currentIndex;
       processMessage(now);
@@ -426,9 +456,8 @@ void ARTHSM::processMessage(long frameEndTime, int attempt) {
   auto integrity = checkDataIntegrity();
   char channel = "?C?BA"[getInt(CHANNEL_FIRST_BIT, CHANNEL_LAST_BIT) + 1];
   string allBits = (debugOutput ? getBitsAsString() + " (" + to_string(frameEndTime - frameStartTime) + "µs)" : "");
-  string timestamp = (debugOutput ? getTimestamp() : "");
 #if defined(SHOW_RAW_DATA) || defined(SHOW_MARGINAL_DATA)
-#define TIMES_ARRAY_ARG , times, changeCount
+#define TIMES_ARRAY_ARG , changeCount, times
   int changeCount = mod(dataEndIndex - dataIndex, RING_BUFFER_SIZE);
   int times[changeCount];
 
@@ -449,7 +478,8 @@ void ARTHSM::processMessage(long frameEndTime, int attempt) {
     sd.miscData1 = getInt(MISC_DATA_1_FIRST_BIT, MISC_DATA_1_LAST_BIT);
     sd.miscData2 = getInt(MISC_DATA_2_FIRST_BIT, MISC_DATA_2_LAST_BIT);
     sd.miscData3 = getInt(MISC_DATA_3_FIRST_BIT, MISC_DATA_3_LAST_BIT);
-    sd.collectionTime = frameEndTime / 1000000; // convert to seconds
+    sd.collectionTime = frameEndTime;
+    sd.repeatsCaptured = 1;
 
     int rawHumidity = getInt(HUMIDITY_FIRST_BIT, HUMIDITY_LAST_BIT);
     sd.humidity = rawHumidity > 100 ? -999 : rawHumidity;
@@ -463,73 +493,31 @@ void ARTHSM::processMessage(long frameEndTime, int attempt) {
     sd.tempFahrenheit = sd.tempCelsius == -999 ? -999 :
       round((sd.tempCelsius * 1.8 + 32.0) * 10.0) / 10.0;
 
-    sd.signalQuality = updateSignalQuality(sd.channel, frameEndTime,
-      sd.validChecksum && sd.humidity != -999 && sd.rawTemp != -999 ? RANK_HIGH : RANK_MID);
+    sd.rank = sd.validChecksum && sd.humidity != -999 && sd.rawTemp != -999 ? RANK_HIGH : RANK_MID;
 
-    thread([this, allBits, sd, attempt, timestamp TIMES_ARRAY_ARG] {
-      dispatchLocks[dataPin].lock();
+    if (attempt > 1)
+      allBits += "*";
 
-      if (debugOutput) {
+    enqueueSensorData(sd, allBits);
+    dataIndex = -1;
+    badBits = 0;
+
 #ifdef SHOW_RAW_DATA
+    if (debugOutput) {
+      thread([this, channel TIMES_ARRAY_ARG] {
+        cout << channel << " - raw timing data:" << endl;
         for (int i = 0; i < changeCount; i += 2) {
           printf("%*d:%*d,%*d", 2, i / 2, 4, times[i], 4, times[i + 1]);
           printf(i == 120 || (i + 2) % 8 == 0 ? "\n" : "   ");
         }
+      }.detach();
+    }
 #endif
-        cout << allBits << endl << timestamp;
-        printf("%c channel %c, %d%%, %.1fC (%d raw), %.1fF, battery %s%s\n",
-          sd.validChecksum ? ':' : '~', sd.channel,
-          sd.humidity, sd.tempCelsius, sd.rawTemp, sd.tempFahrenheit,
-          sd.batteryLow ? "LOW" : "good",
-          attempt > 0 ? "^" : "");
-      }
-
-      if (sd.channel != '?') {
-        int channelActive = lastSensorData.count(sd.channel) > 0;
-        bool doCallback = channelActive || sd.validChecksum;
-        bool cacheNewData = doCallback;
-
-        if (channelActive) {
-          const SensorData lastData = lastSensorData[sd.channel];
-
-          if (sd.collectionTime < lastData.collectionTime + REPEAT_SUPPRESSION &&
-              sd.hasSameValues(lastData))
-            doCallback = false;
-
-          if (sd.collectionTime < lastData.collectionTime + CACHE_REPEAT_SUPPRESSION &&
-              sd.hasSameValues(lastData))
-            cacheNewData = false;
-
-          if (!sd.validChecksum && lastData.validChecksum) {
-            cacheNewData = false;
-
-            if (sd.collectionTime < lastData.collectionTime + REUSE_OLD_DATA_LIMIT &&
-                sd.hasCloseValues(lastData))
-              doCallback = false;
-          }
-          else if (sd.validChecksum && !lastData.validChecksum)
-            doCallback = cacheNewData = true;
-        }
-
-        if (doCallback)
-          sendData(sd);
-
-        if (cacheNewData)
-          lastSensorData[sd.channel] = sd;
-      }
-
-      dispatchLocks[dataPin].unlock();
-    }).detach();
-
-    dataIndex = -1;
-    badBits = 0;
   }
-  else if (attempt == 0) {
-    tryToCleanUpSignal();
+  else if (attempt == 0 && tryToCleanUpSignal())
     processMessage(frameEndTime, 1);
-  }
   else if (debugOutput) {
-    thread([allBits, timestamp TIMES_ARRAY_ARG] {
+    thread([allBits TIMES_ARRAY_ARG] {
 #ifdef SHOW_MARGINAL_DATA
       int b = 0;
       int tt = 0;
@@ -549,12 +537,126 @@ void ARTHSM::processMessage(long frameEndTime, int attempt) {
       }
 #endif
 #ifdef SHOW_CORRUPT_DATA
-      cout << allBits << endl << timestamp << ": Corrupted data\n";
+      cout << allBits << endl << getTimestamp() << ": Corrupted data\n";
 #endif
     }).detach();
   }
-  else if (integrity == BAD_PARITY)
-    updateSignalQuality(channel, frameEndTime, RANK_LOW);
+  else if (integrity == BAD_PARITY) {
+    SensorData sd;
+
+    sd.channel = channel;
+    sd.validChecksum = false;
+    sd.rank = RANK_LOW;
+    sd.repeatsCaptured = 0;
+    enqueueSensorData(sd, allBits);
+  }
+}
+
+void ARTHSM::enqueueSensorData(SensorData sd, string bitString) {
+  if (sd.channel == '?')
+    return;
+
+  queueLocks[dataPin].lock();
+
+  bool holdNewData = false;
+
+  if (holdingRecentData) {
+    if (sd.channel != heldData.channel) {
+      queueLocks[dataPin].unlock();
+      heldDataExitSignal.set_value();
+      holdThread->join();
+      delete holdThread;
+      holdThread = nullptr;
+      queueLocks[dataPin].lock();
+      holdNewData = true;
+    }
+    else {
+      if (sd.rank > heldData.rank) {
+        sd.repeatsCaptured = heldData.repeatsCaptured;
+        heldData = sd;
+        heldBits = bitString;
+      }
+      else if (sd.rank >= RANK_HIGH && heldData.rank >= RANK_HIGH)
+        heldData.rank = RANK_BEST;
+
+      ++heldData.repeatsCaptured;
+    }
+  }
+  else
+    holdNewData = true;
+
+  if (holdNewData) {
+    if (holdThread) {
+      holdThread->join();
+      delete holdThread;
+    }
+
+    heldData = sd;
+    heldBits = bitString;
+    holdingRecentData = true;
+
+    heldDataExitSignal = promise<void>();
+    heldDataControl = heldDataExitSignal.get_future();
+    holdThread = new thread([this]() {
+      heldDataControl.wait_for(std::chrono::microseconds(MESSAGE_HOLD_TIME));
+      queueLocks[dataPin].lock();
+      holdingRecentData = false;
+      heldData.signalQuality = updateSignalQuality(heldData.channel, heldData.collectionTime,
+        heldData.rank);
+
+      SensorData sdCopy = heldData;
+      string bitsCopy = heldBits;
+
+      queueLocks[dataPin].unlock();
+      dispatchData(sdCopy, bitsCopy);
+    });
+  }
+
+  queueLocks[dataPin].unlock();
+}
+
+void ARTHSM::dispatchData(SensorData sd, string allBits) {
+  dispatchLocks[dataPin].lock();
+
+  if (debugOutput) {
+    cout << allBits << endl << getTimestamp();
+    printf("%c ch. %c, %d%%, %.1fC (%d raw), %.1fF, battery %s, %d/%d\n",
+      sd.validChecksum ? ':' : '~', sd.channel,
+      sd.humidity, sd.tempCelsius, sd.rawTemp, sd.tempFahrenheit,
+      sd.batteryLow ? "LOW" : "good",
+      sd.repeatsCaptured,
+      sd.signalQuality);
+  }
+
+  int channelActive = lastSensorData.count(sd.channel) > 0;
+  bool doCallback = channelActive || sd.validChecksum;
+  bool cacheNewData = doCallback;
+
+  if (channelActive) {
+    const SensorData lastData = lastSensorData[sd.channel];
+
+    if (sd.collectionTime < lastData.collectionTime + REPEAT_SUPPRESSION &&
+        sd.hasSameValues(lastData))
+      doCallback = cacheNewData = false;
+
+    if (!sd.validChecksum && lastData.validChecksum) {
+      cacheNewData = false;
+
+      if (sd.collectionTime < lastData.collectionTime + REUSE_OLD_DATA_LIMIT &&
+          sd.hasCloseValues(lastData))
+        doCallback = false;
+    }
+    else if (sd.validChecksum && !lastData.validChecksum)
+      doCallback = cacheNewData = true;
+  }
+
+  if (doCallback)
+    sendData(sd);
+
+  if (cacheNewData)
+    lastSensorData[sd.channel] = sd;
+
+  dispatchLocks[dataPin].unlock();
 }
 
 void ARTHSM::sendData(const SensorData &sd) {
@@ -708,32 +810,26 @@ int ARTHSM::updateSignalQuality(char channel, long time, int rank) {
 
   vector<TimeAndQuality> recents;
   bool channelActive = false;
-  int siblingRank = -1;
 
   if (qualityTracking.count(channel) > 0) {
     channelActive = true;
     recents = qualityTracking[channel];
 
-    // Purge old data, or very recent data (from the same 3-message repeat) of lesser or equal quality)
+    // Purge old data
     auto it = recents.begin();
 
     while (it != recents.end()) {
-      long dataTime = it->first;
-
-      if (dataTime + MESSAGE_LENGTH * 4 > time)
-        siblingRank = it->second;
-
-      if (dataTime + SIGNAL_QUALITY_WINDOW < time || (siblingRank >= 0 && siblingRank <= rank))
+      if (it->first + SIGNAL_QUALITY_WINDOW < time)
         it = recents.erase(it);
       else
         ++it;
     }
   }
 
-  if (rank != RANK_CHECK && (siblingRank < 0 || siblingRank < rank))
+  if (rank != RANK_CHECK)
     recents.push_back({ time, rank });
 
-  if (channelActive || rank == RANK_HIGH) // Only track low-quality data for an active channel
+  if (channelActive || rank >= RANK_HIGH) // Only track low-quality data for an active channel
     qualityTracking[channel] = recents;
 
   auto it = recents.begin();
@@ -744,7 +840,7 @@ int ARTHSM::updateSignalQuality(char channel, long time, int rank) {
     ++it;
   }
 
-  int desiredTotal = max((int) (SIGNAL_QUALITY_WINDOW / DESIRED_SIGNAL_RATE), (int) recents.size()) * RANK_HIGH;
+  int desiredTotal = max((int) (SIGNAL_QUALITY_WINDOW / DESIRED_SIGNAL_RATE), (int) recents.size()) * RANK_BEST;
 
   return min((int) round(total * 100.0 / desiredTotal), 100);
 }
@@ -781,7 +877,8 @@ void ARTHSM::establishQualityCheck() {
   qualityCheckLoopControl = qualityCheckExitSignal.get_future();
 
   thread([this]() {
-    while (qualityCheckLoopControl.wait_for(std::chrono::seconds(SIGNAL_QUALITY_CHECK_RATE)) == std::future_status::timeout) {
+    while (qualityCheckLoopControl.wait_for(std::chrono::microseconds(SIGNAL_QUALITY_CHECK_RATE)) ==
+           std::future_status::timeout) {
       dispatchLocks[dataPin].lock();
 
       long now = micros();
@@ -790,7 +887,7 @@ void ARTHSM::establishQualityCheck() {
       while (it != lastSensorData.end()) {
         auto sd = it->second;
 
-        if (sd.collectionTime + SIGNAL_QUALITY_CHECK_RATE < now / 1000000) {
+        if (sd.collectionTime + SIGNAL_QUALITY_CHECK_RATE < now) {
           int prevQuality = sd.signalQuality;
           sd.signalQuality = updateSignalQuality(sd.channel, now, RANK_CHECK);
 

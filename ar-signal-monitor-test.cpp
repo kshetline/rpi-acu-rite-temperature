@@ -1,5 +1,7 @@
-#include <iostream>
 #include "ar-signal-monitor.h"
+#include <chrono>
+#include <csignal>
+#include <iostream>
 #include "pin-conversions.h"
 
 using namespace std;
@@ -11,15 +13,23 @@ void callback(ArTemperatureHumiditySignalMonitor::SensorData sd, void *msg) {
   //   sd.humidity, sd.tempCelsius, sd.tempFahrenheit);
 }
 
+static ArTemperatureHumiditySignalMonitor *SM;
+
+void signalHandler(int signum) {
+  delete SM;
+  exit(signum);
+}
+
 int main(int argc, char **argv) {
   cout << "Acu-Rite temperature/humidity monitor starting\n\n";
-  auto SM = new ArTemperatureHumiditySignalMonitor();
+  SM = new ArTemperatureHumiditySignalMonitor();
   SM->init(13, PinSystem::PHYS);
   SM->enableDebugOutput(true);
   SM->addListener(&callback, (void *) "Got data");
 
-  getchar();
-  getchar();
+  while (true) {
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+  }
 
   return 0;
 }

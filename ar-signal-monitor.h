@@ -33,6 +33,8 @@ class ArTemperatureHumiditySignalMonitor {
         int miscData2;
         int miscData3;
         int rawTemp;
+        int rank;
+        int repeatsCaptured;
         int signalQuality;
         double tempCelsius;
         double tempFahrenheit;
@@ -43,6 +45,7 @@ class ArTemperatureHumiditySignalMonitor {
     };
 
   private:
+    static long baseMicroTime;
     static long extendedMicroTime;
     static bool initialSetupDone;
     static uint32_t lastMicroTimeU32;
@@ -57,28 +60,34 @@ class ArTemperatureHumiditySignalMonitor {
     typedef std::pair<VoidFunctionPtr, VoidPtr> ClientCallback;
     typedef std::pair<long, int> TimeAndQuality;
 
+    int badBits = 0;
+    int baseIndex = 0;
+    long baseTime = -1;
     std::map<int, ClientCallback> clientCallbacks;
+    int dataEndIndex = 0;
+    int dataIndex = -1;
     int dataPin = -1;
     bool debugOutput = false;
-    std::map<char, SensorData> lastSensorData;
-    long lastSignalChange = 0;
     long frameStartTime = 0;
+    SensorData heldData;
+    std::string heldBits;
+    std::future<void> heldDataControl;
+    std::promise<void> heldDataExitSignal;
+    bool holdingRecentData = false;
+    std::thread *holdThread = nullptr;
+    std::map<char, SensorData> lastSensorData;
+    int lastPinState = -1;
+    long lastSignalChange = 0;
+    int potentialDataIndex = 0;
     std::promise<void> qualityCheckExitSignal;
     std::future<void> qualityCheckLoopControl;
     std::map<char, std::vector<TimeAndQuality>> qualityTracking;
     int sequentialBits = 0;
-    int badBits = 0;
-    int potentialDataIndex = 0;
-    int dataIndex = -1;
-    int dataEndIndex = 0;
-    int timingIndex = -1;
-    int baseIndex = 0;
-    long baseTime = -1;
     int syncIndex1 = 0;
-    long syncTime1 = -1;
     int syncIndex2 = 0;
+    long syncTime1 = -1;
     long syncTime2 = -1;
-    int lastPinState = -1;
+    int timingIndex = -1;
     unsigned short timings[RING_BUFFER_SIZE] = {0};
 
   public:
@@ -98,6 +107,8 @@ class ArTemperatureHumiditySignalMonitor {
     DataIntegrity checkDataIntegrity();
     bool combineMessages();
     bool combineMessages(int count, int *msgIndices);
+    void dispatchData(SensorData sd, std::string allBits);
+    void enqueueSensorData(SensorData sd, std::string bitString);
     void establishQualityCheck();
     bool findStartOfTriplet();
     int getBit(int offset);
