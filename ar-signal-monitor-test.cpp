@@ -16,16 +16,20 @@ void callback(ArTemperatureHumiditySignalMonitor::SensorData sd, void *msg) {
 static ArTemperatureHumiditySignalMonitor *SM;
 
 void signalHandler(int signum) {
+  cout << "\n*** Exiting temperature/humidity monitor ***\n";
   delete SM;
   exit(signum);
 }
 
 int main(int argc, char **argv) {
-  cout << "Acu-Rite temperature/humidity monitor starting\n\n";
+  cout << "*** Acu-Rite temperature/humidity monitor starting *** \n\n";
   SM = new ArTemperatureHumiditySignalMonitor();
   SM->init(13, PinSystem::PHYS);
   SM->enableDebugOutput(true);
   SM->addListener(&callback, (void *) "Got data");
+
+  signal(SIGINT, signalHandler);
+  signal(SIGTERM, signalHandler);
 
   while (true) {
     std::this_thread::sleep_for(std::chrono::seconds(1));
