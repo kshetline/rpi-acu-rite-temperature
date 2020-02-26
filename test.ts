@@ -22,7 +22,7 @@ const id = addSensorDataListener(pin, data => {
 
   const date = new Date();
   const timeStamp = new Date(date.getTime() -
-    date.getTimezoneOffset() * 60000).toISOString().substr(0, 19).replace('T', ' ') + ':';
+    date.getTimezoneOffset() * 60000).toISOString().substr(11, 19).replace('T', ' ') + ':';
 
   console.log(timeStamp, formatted);
 });

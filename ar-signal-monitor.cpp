@@ -85,6 +85,9 @@ static const int MISC_DATA_3_LAST_BIT =  35;
 static const int TEMPERATURE_FIRST_BIT = 36;
 static const int TEMPERATURE_LAST_BIT =  47;
 
+static const int CHECKSUM_FIRST_BIT =    48;
+static const int CHECKSUM_LAST_BIT =     55;
+
 static const int REPEAT_SUPPRESSION =    60'000'000; // 1 minute
 static const int REUSE_OLD_DATA_LIMIT = 600'000'000; // 10 minutes
 
@@ -497,8 +500,8 @@ void ARTHSM::processMessage(long frameEndTime, int attempt) {
     if (abs(sd.tempCelsius) > 60)
       sd.tempCelsius = -999;
 
-    sd.tempFahrenheit = sd.tempCelsius == -999 ? -999 :
-      round((sd.tempCelsius * 1.8 + 32.0) * 10.0) / 10.0;
+    sd.tempFahrenheit = (sd.tempCelsius == -999 ? -999 :
+      round((sd.tempCelsius * 1.8 + 32.0) * 10.0) / 10.0);
 
     sd.rank = sd.validChecksum && sd.humidity != -999 && sd.rawTemp != -999 ? RANK_HIGH : RANK_MID;
 
@@ -611,11 +614,13 @@ void ARTHSM::enqueueSensorData(SensorData sd, string bitString) {
       heldData.signalQuality = updateSignalQuality(heldData.channel, heldData.collectionTime,
         heldData.rank);
 
-      SensorData sdCopy = heldData;
-      string bitsCopy = heldBits;
+      if (heldData.rank >= RANK_MID) {
+        SensorData sdCopy = heldData;
+        string bitsCopy = heldBits;
 
-      queueLocks[dataPin].unlock();
-      dispatchData(sdCopy, bitsCopy);
+        queueLocks[dataPin].unlock();
+        dispatchData(sdCopy, bitsCopy);
+      }
     });
   }
 
@@ -876,7 +881,7 @@ ARTHSM::DataIntegrity ARTHSM::checkDataIntegrity() {
   for (int byte = 0; byte <= 5; ++ byte)
     checksum += getInt(byte * 8, byte * 8 + 7);
 
-  return (checksum & 0xFF) == getInt(48, 55) ? GOOD : BAD_CHECKSUM;
+  return (checksum & 0xFF) == getInt(CHECKSUM_FIRST_BIT, CHECKSUM_LAST_BIT) ? GOOD : BAD_CHECKSUM;
 }
 
 void ARTHSM::establishQualityCheck() {
