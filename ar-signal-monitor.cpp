@@ -586,7 +586,7 @@ void ARTHSM::enqueueSensorData(SensorData sd, string bitString) {
         heldData = sd;
         heldBits = bitString;
       }
-      else if (sd.rank >= RANK_HIGH && heldData.rank >= RANK_HIGH)
+      else if (sd.rank >= RANK_HIGH && heldData.rank >= RANK_HIGH && sd.hasSameValues(heldData))
         heldData.rank = RANK_BEST;
 
       ++heldData.repeatsCaptured;
