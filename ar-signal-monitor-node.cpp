@@ -3,6 +3,7 @@
 #include <iostream>
 #include <thread>
 #include "ar-signal-monitor.h"
+#include "pin-conversions.h"
 
 using namespace std;
 
@@ -90,7 +91,7 @@ Napi::Value addSensorDataListener(const Napi::CallbackInfo &info) {
   if (signalMonitorsByPin.count(pin) == 0) {
     try {
       monitor = new ARTHSM();
-      monitor->init(pin, (ARTHSM::PinSystem) pinSys);
+      monitor->init(pin, (PinSystem) pinSys);
     }
     catch (char *err) {
       cerr << err << endl;

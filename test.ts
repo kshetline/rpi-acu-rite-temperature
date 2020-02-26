@@ -5,7 +5,7 @@ let pin = '';
 for (let i = 0; i < process.argv.length - 1 && !pin; ++i)
   pin = process.argv[i] === '-p' ? process.argv[i + 1]?.toLowerCase().trim() : '';
 
-pin = pin || '2';
+pin = pin || '27';
 console.log(`Awaiting humidity/temperature data on pin ${pin}...`);
 
 const id = addSensorDataListener(pin, data => {
@@ -22,13 +22,16 @@ const id = addSensorDataListener(pin, data => {
 
   const date = new Date();
   const timeStamp = new Date(date.getTime() -
-    date.getTimezoneOffset() * 60000).toISOString().substr(0, 19).replace('T', ' ') + ':';
+    date.getTimezoneOffset() * 60000).toISOString().substr(11, 19).replace('T', ' ') + ':';
 
   console.log(timeStamp, formatted);
 });
 
-process.on('SIGINT', () => {
+function cleanUp() {
   removeSensorDataListener(id);
   console.log();
   process.exit(0);
-});
+}
+
+process.on('SIGINT', cleanUp);
+process.on('SIGTERM', cleanUp);

@@ -8,26 +8,33 @@
 #include <utility>
 #include <vector>
 
+#ifndef USE_FAKE_PIGPIO
+#include <pigpio.h>
+#else
+#include "pigpio-fake.h"
+#endif
+#include "pin-conversions.h"
+
 static const int RING_BUFFER_SIZE = 512;
 
 #undef SHOW_RAW_DATA
 #undef SHOW_MARGINAL_DATA
+#undef SHOW_CORRUPT_DATA
 
 class ArTemperatureHumiditySignalMonitor {
   public:
-    enum PinSystem { VIRTUAL, SYS, GPIO, PHYS };
-    static PinSystem getPinSystem();
-
     class SensorData {
       public:
         bool batteryLow;
         char channel;
-        unsigned int collectionTime;
+        long collectionTime;
         int humidity;
         int miscData1;
         int miscData2;
         int miscData3;
         int rawTemp;
+        int rank;
+        int repeatsCaptured;
         int signalQuality;
         double tempCelsius;
         double tempFahrenheit;
@@ -37,34 +44,49 @@ class ArTemperatureHumiditySignalMonitor {
         bool hasCloseValues(const SensorData &sd) const;
     };
 
-   private:
+  private:
+    static long baseMicroTime;
+    static long extendedMicroTime;
     static bool initialSetupDone;
-    static PinSystem pinSystem;
-    static int callbackIndex;
+    static uint32_t lastMicroTimeU32;
+    static int nextClientCallbackIndex;
+    static bool pinInUse[];
+    static int pinsInUse;
 
     enum DataIntegrity { BAD_BITS, BAD_PARITY, BAD_CHECKSUM, GOOD };
 
     typedef void (*VoidFunctionPtr)(SensorData sensorData, void *miscData);
     typedef void *VoidPtr;
     typedef std::pair<VoidFunctionPtr, VoidPtr> ClientCallback;
-    typedef std::pair<unsigned long, int> TimeAndQuality;
+    typedef std::pair<long, int> TimeAndQuality;
 
+    int badBits = 0;
+    int baseIndex = 0;
+    long baseTime = -1;
     std::map<int, ClientCallback> clientCallbacks;
+    int dataEndIndex = 0;
+    int dataIndex = -1;
     int dataPin = -1;
     bool debugOutput = false;
-    std::mutex *dispatchLock;
+    long frameStartTime = 0;
+    SensorData heldData;
+    std::string heldBits;
+    std::future<void> heldDataControl;
+    std::promise<void> heldDataExitSignal;
+    bool holdingRecentData = false;
+    std::thread *holdThread = nullptr;
     std::map<char, SensorData> lastSensorData;
-    unsigned long lastSignalChange = 0;
-    unsigned long frameStartTime = 0;
-    int nextClientCallbackIndex = 0;
+    int lastPinState = -1;
+    long lastSignalChange = 0;
+    int potentialDataIndex = 0;
     std::promise<void> qualityCheckExitSignal;
     std::future<void> qualityCheckLoopControl;
     std::map<char, std::vector<TimeAndQuality>> qualityTracking;
     int sequentialBits = 0;
-    int badBits = 0;
-    int potentialDataIndex = 0;
-    int dataIndex = -1;
-    int dataEndIndex = 0;
+    int syncIndex1 = 0;
+    int syncIndex2 = 0;
+    long syncTime1 = -1;
+    long syncTime2 = -1;
     int timingIndex = -1;
     unsigned short timings[RING_BUFFER_SIZE] = {0};
 
@@ -79,25 +101,32 @@ class ArTemperatureHumiditySignalMonitor {
     int getDataPin();
     void enableDebugOutput(bool state);
     void removeListener(int listenerId);
-    void static signalHasChanged(int index);
+    void static signalHasChanged(int dataPin, int level, unsigned int tick, void *userData);
 
   private:
     DataIntegrity checkDataIntegrity();
+    bool combineMessages();
+    bool combineMessages(int count, int *msgIndices);
+    void dispatchData(SensorData sd, std::string allBits);
+    void enqueueSensorData(SensorData sd, std::string bitString);
     void establishQualityCheck();
+    bool findStartOfTriplet();
     int getBit(int offset);
     std::string getBitsAsString();
     int getInt(int firstBit, int lastBit);
     int getInt(int firstBit, int lastBit, bool skipParity);
     int getTiming(int offset);
     bool isSyncAcquired();
-    void processMessage(unsigned long frameEndTime);
-    void processMessage(unsigned long frameEndTime, int attempt);
+    void processMessage(long frameEndTime);
+    void processMessage(long frameEndTime, int attempt);
     void sendData(const SensorData &sd);
     void setTiming(int offset, unsigned short value);
-    void signalHasChangedAux(unsigned long now);
-    void tryToCleanUpSignal();
-    int updateSignalQuality(char channel, unsigned long time, int rank);
+    void signalHasChangedAux(long now, int pinState);
+    bool tryToCleanUpSignal();
+    int updateSignalQuality(char channel, long time, int rank);
 
+    static long micros();
+    static long micros(uint32_t microTimeU32);
     static bool isZeroBit(int t0, int t1);
     static bool isOneBit(int t0, int t1);
     static bool isShortSync(int t0, int t1);
