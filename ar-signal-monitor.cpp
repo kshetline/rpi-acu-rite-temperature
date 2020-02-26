@@ -885,7 +885,6 @@ ARTHSM::DataIntegrity ARTHSM::checkDataIntegrity() {
 }
 
 void ARTHSM::establishQualityCheck() {
-
   qualityCheckLoopControl = qualityCheckExitSignal.get_future();
 
   thread([this]() {

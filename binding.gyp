@@ -21,6 +21,9 @@
         "/usr/include/node",
         "/usr/local/include/node"
       ],
+      "dependencies": [
+        "<!(node -p \"require('node-addon-api').gyp\")"
+      ],
       "libraries": [
         "-lpigpio"
       ],
