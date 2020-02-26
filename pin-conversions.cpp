@@ -188,7 +188,10 @@ int convertPinToGpio(int pinNumber, PinSystem pinSys) {
         return -1;
 
     case WIRING_PI:
-      return -1;
+      if (0 <= pinNumber && pinNumber <= 63)
+        return wpiToGpio[pinNumber];
+      else
+        return -1;
   }
 
   return -1;

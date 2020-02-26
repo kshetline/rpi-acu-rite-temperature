@@ -47,16 +47,19 @@ export interface HtSensorData {
   validChecksum: boolean; // Is the data fully trustworthy?
 }
 ```
+`humidity` will be undefined if the signal was decoded as having a value less than 0 or greater than 100.
 
-`signalQuality` is measured over a five minute window, and will register low even for a strong signal until a full five minutes have passed.
+`rawTemp` will be undefined, and `tempCelsius` and `tempFahrenheit` as well, if the signal was decoded with a value outside of the range ±60°C.
 
-While it's best for `validChecksum` to be `true`, any data provided has at least been validated by three parity bits even if the checksum didn't come out right. In some cases, if you aren't willing to accept data from a weak signal despite an invalid checksum, you might have to wait a long time for any data at all.
+`signalQuality` is measured over a five minute window, and may register low even for a strong signal until a full five minutes have passed.
+
+It's best for `validChecksum` to be `true`, but the data provided has at least been validated by three parity bits even if the checksum didn't come out right. When a weak signal makes updates infrequent, it may be possible, with care, to use somewhat questionable data.
 
 ### addSensorDataListener
 
 This function is used to register a callback that receives the above temperature/humidity data. You must specify the input `pin` to which your [433 MHz RF receiver](https://www.amazon.com/gp/product/B00HEDRHG6/) is connected, and optionally specify a pin numbering system. The default is `PinSystem.GPIO`, for Broadcom GPIO numbers. Optionally you may use:
 
-* `PinSystem.PHYS`: physical pin numbers on the P1 connector (1-40) or Rev. 2 P5 connector (53-56 for P5 3-6) (string suffix `p`)
+* `PinSystem.PHYS`: physical pin numbers on the P1 connector (1-40) or the Rev. 2 P5 connector (53-56 for P5 3-6) (string suffix `p`)
 * `PinSystem.WIRING_PI`: WiringPi pin numbers (string suffix `w`)
 
 _For more information see: http://wiringpi.com/reference/setup/_
