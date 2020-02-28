@@ -557,6 +557,7 @@ void ARTHSM::processMessage(long frameEndTime, int attempt) {
     sd.channel = channel;
     sd.validChecksum = false;
     sd.rank = RANK_LOW;
+    sd.validChecksum = false;
     sd.repeatsCaptured = 0;
     enqueueSensorData(sd, allBits);
   }
@@ -572,12 +573,15 @@ void ARTHSM::enqueueSensorData(SensorData sd, string bitString) {
 
   if (holdingRecentData) {
     if (sd.channel != heldData.channel) {
-      queueLocks[dataPin].unlock();
       heldDataExitSignal.set_value();
-      holdThread->join();
+      queueLocks[dataPin].unlock();
+
+      if (holdThread->joinable())
+        holdThread->join();
+
+      queueLocks[dataPin].lock();
       delete holdThread;
       holdThread = nullptr;
-      queueLocks[dataPin].lock();
       holdNewData = true;
     }
     else {
@@ -597,7 +601,9 @@ void ARTHSM::enqueueSensorData(SensorData sd, string bitString) {
 
   if (holdNewData) {
     if (holdThread) {
-      holdThread->join();
+      if (holdThread->joinable())
+        holdThread->join();
+
       delete holdThread;
     }
 
@@ -614,13 +620,15 @@ void ARTHSM::enqueueSensorData(SensorData sd, string bitString) {
       heldData.signalQuality = updateSignalQuality(heldData.channel, heldData.collectionTime,
         heldData.rank);
 
-      if (heldData.rank >= RANK_MID) {
+      if (heldData.rank >= RANK_MID && heldData.repeatsCaptured > 0) {
         SensorData sdCopy = heldData;
         string bitsCopy = heldBits;
 
         queueLocks[dataPin].unlock();
         dispatchData(sdCopy, bitsCopy);
       }
+      else
+        queueLocks[dataPin].unlock();
     });
   }
 
