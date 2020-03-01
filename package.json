@@ -4,8 +4,9 @@
   "description": "Library for reading the Acu-Rite 06002M Wireless Temperature and Humidity Sensor using a Raspberry Pi via 433Mhz receiver",
   "main": "index.js",
   "scripts": {
+    "temp": "node-gyp configure",
     "install": "npm i node-addon-api && node-gyp configure",
-    "postinstall": "tsc && node-gyp build",
+    "postinstall": "tsc && node-gyp rebuild",
     "postpublish": "PACKAGE_VERSION=$(cat package.json | grep \\\"version\\\" | head -1 | awk -F: '{ print $2 }' | sed 's/[\",]//g' | tr -d '[[:space:]]') && git tag v$PACKAGE_VERSION && git push --tags"
   },
   "dependencies": {

@@ -22,6 +22,12 @@ ar-signal-monitor-test
 .settings/
 *.sublime-workspace
 .vscode/*
+/.vs
+/Debug
+*.sln
+*.vcxproj
+*.vcxproj.*
+/x64
 
 # misc
 /.sass-cache

@@ -127,7 +127,7 @@ static void pgfSendSignals() {
 }
 
 int gpioInitialise() {
-  std::srand(std::chrono::duration_cast<std::chrono::milliseconds>
+  std::srand((unsigned int) std::chrono::duration_cast<std::chrono::milliseconds>
     (std::chrono::system_clock::now().time_since_epoch()).count());
 
   return 0;
