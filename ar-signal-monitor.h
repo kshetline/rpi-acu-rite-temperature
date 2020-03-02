@@ -8,10 +8,10 @@
 #include <utility>
 #include <vector>
 
-#ifndef USE_FAKE_PIGPIO
-#include <pigpio.h>
-#else
+#ifdef USE_FAKE_PIGPIO
 #include "pigpio-fake.h"
+#else
+#include <pigpio.h>
 #endif
 #include "pin-conversions.h"
 

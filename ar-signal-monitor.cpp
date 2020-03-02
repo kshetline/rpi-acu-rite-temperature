@@ -184,8 +184,10 @@ void ARTHSM::init(int dataPin, PinSystem pinSys) {
   if (!initialSetupDone) {
   #if defined(WIN32) || defined(WINDOWS)
     // It takes more effort to get the Windows console to display non-ASCII characters.
-    SetConsoleOutputCP(CP_UTF8);
-    setvbuf(stdout, nullptr, _IOFBF, 1000);
+    if (debugOutput) {
+      SetConsoleOutputCP(CP_UTF8);
+      setvbuf(stdout, nullptr, _IOFBF, 1000);
+    }
   #endif
     cout << "Initializing pigpio\n";
 
