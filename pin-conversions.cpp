@@ -137,8 +137,13 @@ enum GpioLayout {
     UNKNOWN
 };
 
+#ifdef USE_FAKE_PIGPIO
+static GpioLayout gpioLayout = GpioLayout::UNKNOWN;
+static bool supportPhysPins = true;
+#else
 static GpioLayout gpioLayout = GpioLayout::UNCHECKED;
 static bool supportPhysPins = false;
+#endif
 
 int convertPinToGpio(int pinNumber, PinSystem pinSys) {
     if (gpioLayout == UNCHECKED) {

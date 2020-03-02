@@ -1,6 +1,6 @@
 {
   "name": "rpi-acu-rite-temperature",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "Library for reading the Acu-Rite 06002M Wireless Temperature and Humidity Sensor using a Raspberry Pi via 433Mhz receiver",
   "main": "index.js",
   "scripts": {
@@ -35,5 +35,16 @@
     "url": "https://github.com/kshetline/rpi-acu-rite-temperature/issues"
   },
   "homepage": "https://github.com/kshetline/rpi-acu-rite-temperature#readme",
-  "gypfile": true
+  "gypfile": true,
+  "files": [
+    "*d.ts",
+    "*.js",
+    "*js.map",
+    "*.md",
+    "*.cpp",
+    "*.h",
+    "binding.gyp",
+    "!ar-signal-monitor-test.cpp",
+    "!test.*"
+  ]
 }

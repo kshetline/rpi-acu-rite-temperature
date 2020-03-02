@@ -67,7 +67,7 @@ class ArTemperatureHumiditySignalMonitor {
     int dataEndIndex = 0;
     int dataIndex = -1;
     int dataPin = -1;
-    bool debugOutput = true;
+    bool debugOutput = false;
     int64_t frameStartTime = 0;
     SensorData heldData;
     std::string heldBits;
