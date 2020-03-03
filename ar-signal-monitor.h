@@ -8,12 +8,13 @@
 #include <utility>
 #include <vector>
 
-#ifndef USE_FAKE_PIGPIO
-#include <pigpio.h>
-#else
+#ifdef USE_FAKE_PIGPIO
 #include "pigpio-fake.h"
+#else
+#include <pigpio.h>
 #endif
 #include "pin-conversions.h"
+//#define int64_t long
 
 static const int RING_BUFFER_SIZE = 512;
 
@@ -27,7 +28,7 @@ class ArTemperatureHumiditySignalMonitor {
       public:
         bool batteryLow;
         char channel;
-        long collectionTime;
+        int64_t collectionTime;
         int humidity;
         int miscData1;
         int miscData2;
@@ -45,30 +46,31 @@ class ArTemperatureHumiditySignalMonitor {
     };
 
   private:
-    static long baseMicroTime;
-    static long extendedMicroTime;
+    static int64_t baseMicroTime;
+    static int64_t extendedMicroTime;
     static bool initialSetupDone;
     static uint32_t lastMicroTimeU32;
     static int nextClientCallbackIndex;
     static bool pinInUse[];
     static int pinsInUse;
+    static std::mutex timeLock;
 
     enum DataIntegrity { BAD_BITS, BAD_PARITY, BAD_CHECKSUM, GOOD };
 
     typedef void (*VoidFunctionPtr)(SensorData sensorData, void *miscData);
     typedef void *VoidPtr;
     typedef std::pair<VoidFunctionPtr, VoidPtr> ClientCallback;
-    typedef std::pair<long, int> TimeAndQuality;
+    typedef std::pair<int64_t, int> TimeAndQuality;
 
     int badBits = 0;
     int baseIndex = 0;
-    long baseTime = -1;
+    int64_t baseTime = -1;
     std::map<int, ClientCallback> clientCallbacks;
     int dataEndIndex = 0;
     int dataIndex = -1;
     int dataPin = -1;
     bool debugOutput = false;
-    long frameStartTime = 0;
+    int64_t frameStartTime = 0;
     SensorData heldData;
     std::string heldBits;
     std::future<void> heldDataControl;
@@ -77,7 +79,7 @@ class ArTemperatureHumiditySignalMonitor {
     std::thread *holdThread = nullptr;
     std::map<char, SensorData> lastSensorData;
     int lastPinState = -1;
-    long lastSignalChange = 0;
+    int64_t lastSignalChange = 0;
     int potentialDataIndex = 0;
     std::promise<void> qualityCheckExitSignal;
     std::future<void> qualityCheckLoopControl;
@@ -85,10 +87,10 @@ class ArTemperatureHumiditySignalMonitor {
     int sequentialBits = 0;
     int syncIndex1 = 0;
     int syncIndex2 = 0;
-    long syncTime1 = -1;
-    long syncTime2 = -1;
+    int64_t syncTime1 = -1;
+    int64_t syncTime2 = -1;
     int timingIndex = -1;
-    unsigned short timings[RING_BUFFER_SIZE] = {0};
+    int timings[RING_BUFFER_SIZE] = {0};
 
   public:
     ArTemperatureHumiditySignalMonitor();
@@ -101,7 +103,7 @@ class ArTemperatureHumiditySignalMonitor {
     int getDataPin();
     void enableDebugOutput(bool state);
     void removeListener(int listenerId);
-    void static signalHasChanged(int dataPin, int level, unsigned int tick, void *userData);
+    void static signalHasChanged(int dataPin, int level, uint32_t tick, void *userData);
 
   private:
     DataIntegrity checkDataIntegrity();
@@ -117,16 +119,16 @@ class ArTemperatureHumiditySignalMonitor {
     int getInt(int firstBit, int lastBit, bool skipParity);
     int getTiming(int offset);
     bool isSyncAcquired();
-    void processMessage(long frameEndTime);
-    void processMessage(long frameEndTime, int attempt);
+    void processMessage(int64_t frameEndTime);
+    void processMessage(int64_t frameEndTime, int attempt);
     void sendData(const SensorData &sd);
-    void setTiming(int offset, unsigned short value);
-    void signalHasChangedAux(long now, int pinState);
+    void setTiming(int offset, int value);
+    void signalHasChangedAux(int64_t now, int pinState);
     bool tryToCleanUpSignal();
-    int updateSignalQuality(char channel, long time, int rank);
+    int updateSignalQuality(char channel, int64_t time, int rank);
 
-    static long micros();
-    static long micros(uint32_t microTimeU32);
+    static int64_t micros();
+    static int64_t micros(uint32_t microTimeU32);
     static bool isZeroBit(int t0, int t1);
     static bool isOneBit(int t0, int t1);
     static bool isShortSync(int t0, int t1);

@@ -8,7 +8,7 @@ _This library was inspired by work originally done by [Ray Wang](http://rayshobb
 
 `rpi-acu-rite-temperature` can be used for JavaScript/TypeScript programming in a Node.js environment, or the included C++ code can be used directly. It is the JavaScript/TypeScript interface that is documented here.
 
-Full functionality requires a Raspberry Pi, but this code can be installed and compiled under MacOS (and perhaps Windows as well — not yet verified) in such a way that it returns simulated data for testing and development use.
+Full functionality requires a Raspberry Pi, but this code can be installed and compiled under MacOS or Windows in such a way that it returns simulated data for testing and development use.
 
 ---
 > **Breaking changes:**
@@ -47,15 +47,20 @@ export interface HtSensorData {
   validChecksum: boolean; // Is the data fully trustworthy?
 }
 ```
-`humidity` will be undefined if the signal was decoded as having a value less than 0 or greater than 100.
+`humidity` will be `undefined` if the signal was decoded as having a value greater than 100.
 
-`rawTemp` will be undefined, and `tempCelsius` and `tempFahrenheit` as well, if the signal was decoded with a value outside of the range ±60°C.
+`rawTemp` will be `undefined`, and `tempCelsius` and `tempFahrenheit` as well, if the signal was decoded with a value outside of the range ±60°C.
 
 `signalQuality` is measured over a five minute window, and may register low even for a strong signal until a full five minutes have passed.
 
 It's best for `validChecksum` to be `true`, but the data provided has at least been validated by three parity bits even if the checksum didn't come out right. When a weak signal makes updates infrequent, it may be possible, with care, to use somewhat questionable data.
 
 ### addSensorDataListener
+
+```
+addSensorDataListener(pin: number | string, callback: HtSensorDataCallback): number;
+addSensorDataListener(pin: number, pinSystem: PinSystem, callback: HtSensorDataCallback): number;
+```
 
 This function is used to register a callback that receives the above temperature/humidity data. You must specify the input `pin` to which your [433 MHz RF receiver](https://www.amazon.com/gp/product/B00HEDRHG6/) is connected, and optionally specify a pin numbering system. The default is `PinSystem.GPIO`, for Broadcom GPIO numbers. Optionally you may use:
 
@@ -65,10 +70,6 @@ This function is used to register a callback that receives the above temperature
 _For more information see: http://wiringpi.com/reference/setup/_
 
 You can also specify the pin and pin system together as a string value, such as `'13p'`, which is physical pin 13 on the P1 connector.
-```
-addSensorDataListener(pin: number | string, callback: HtSensorDataCallback): number;
-addSensorDataListener(pin: number, pinSystem: PinSystem, callback: HtSensorDataCallback): number;
-```
 
 The function returns a numeric ID which can be used by the function below to unregister your callback.
 

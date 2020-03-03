@@ -8,7 +8,6 @@
       "cflags_cc": ["-Wall", "-Wno-psabi", "-pthread"],
       "sources": [
         "ar-signal-monitor-node.cpp",
-        "ar-signal-monitor-node.h",
         "ar-signal-monitor.cpp",
         "ar-signal-monitor.h",
         "pin-conversions.cpp",
@@ -36,9 +35,15 @@
           "xcode_settings": {"GCC_ENABLE_CPP_EXCEPTIONS": "YES"}
         }],
         ["OS==\"win\"", {
-          "defines": ["USE_FAKE_PIGPIO"],
+          "defines": ["USE_FAKE_PIGPIO", "WINDOWS"],
           "libraries!": ["-lpigpio"],
-          "sources": ["pigpio-fake.cpp", "pigpio-fake.h"]
+          "sources": ["pigpio-fake.cpp", "pigpio-fake.h"],
+          "msvs_settings": {
+            "VCCLCompilerTool": {
+              "ExceptionHandling": 1,
+              "AdditionalOptions": [ "/std:c++14", "/utf-8" ]
+            }
+          }
         }],
       ],
     }

@@ -14,50 +14,50 @@ using namespace std;
 
 static int wpiToGpioR1[64] =
 {
-  17, 18, 21, 22, 23, 24, 25, 4,	// From the Original Wiki - GPIO 0 through 7:	wpi 0 - 7
-   0,  1,				// I2C  - SDA1, SCL1				wpi  8 -  9
-   8,  7,				// SPI  - CE1, CE0				  wpi 10 - 11
-  10,  9, 11, 	// SPI  - MOSI, MISO, SCLK	wpi 12 - 14
-  14, 15,				// UART - Tx, Rx				    wpi 15 - 16
+  17, 18, 21, 22, 23, 24, 25, 4,  // From the Original Wiki - GPIO 0 through 7: wpi 0 - 7
+   0,  1,       // I2C  - SDA1, SCL1        wpi  8 -  9
+   8,  7,       // SPI  - CE1, CE0          wpi 10 - 11
+  10,  9, 11,   // SPI  - MOSI, MISO, SCLK  wpi 12 - 14
+  14, 15,       // UART - Tx, Rx            wpi 15 - 16
 
 // Padding:
 
-      -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,	// ... 31
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,	// ... 47
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,	// ... 63
-} ;
+      -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // ... 31
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // ... 47
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // ... 63
+};
 
 // Revision 2:
 
 static int wpiToGpioR2[64] =
 {
-  17, 18, 27, 22, 23, 24, 25, 4,	// From the Original Wiki - GPIO 0 through 7:	wpi  0 - 7
-   2,  3,				// I2C  - SDA0, SCL0				            wpi  8 - 9
-   8,  7,				// SPI  - CE1, CE0				              wpi 10 - 11
-  10,  9, 11, 	// SPI  - MOSI, MISO, SCLK              wpi 12 - 14
-  14, 15,				// UART - Tx, Rx				                wpi 15 - 16
-  28, 29, 30, 31,			// Rev 2: New GPIOs 8 though 11   wpi 17 - 20
-   5,  6, 13, 19, 26,	// B+						                  wpi 21, 22, 23, 24, 25
-  12, 16, 20, 21,			// B+						                  wpi 26, 27, 28, 29
-   0,  1,				      // B+						                  wpi 30, 31
+  17, 18, 27, 22, 23, 24, 25, 4,  // From the Original Wiki - GPIO 0 through 7: wpi  0 - 7
+   2,  3,       // I2C  - SDA0, SCL0                    wpi  8 - 9
+   8,  7,       // SPI  - CE1, CE0                      wpi 10 - 11
+  10,  9, 11,   // SPI  - MOSI, MISO, SCLK              wpi 12 - 14
+  14, 15,       // UART - Tx, Rx                        wpi 15 - 16
+  28, 29, 30, 31,     // Rev 2: New GPIOs 8 though 11   wpi 17 - 20
+   5,  6, 13, 19, 26, // B+                             wpi 21, 22, 23, 24, 25
+  12, 16, 20, 21,     // B+                             wpi 26, 27, 28, 29
+   0,  1,             // B+                             wpi 30, 31
 
 // Padding:
 
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,	// ... 47
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,	// ... 63
-} ;
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // ... 47
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // ... 63
+};
 
-static int *wpiToGpio = wpiToGpioR2;
+static int* wpiToGpio = wpiToGpioR2;
 
 // physToGpio:
-//	Take a physical pin (1 through 26/40) and re-map it to the BCM_GPIO pin
-//	Cope for 2 different board revisions here.
-//	For P5 connector, P5 pin numbers are offset by 50, i.e. 3, 4, 5, 6 => 53, 54, 55, 56
+//  Take a physical pin (1 through 26/40) and re-map it to the BCM_GPIO pin
+//  Cope for 2 different board revisions here.
+//  For P5 connector, P5 pin numbers are offset by 50, i.e. 3, 4, 5, 6 => 53, 54, 55, 56
 
 static int physToGpioR1[64] =
 {
-  -1,		  // 0
-  -1, -1,	// 1, 2
+  -1,     // 0
+  -1, -1, // 1, 2
    0, -1,
    1, -1,
    4, 14,
@@ -69,17 +69,17 @@ static int physToGpioR1[64] =
   10, -1,
    9, 25,
   11,  8,
-  -1,  7,	// 25, 26
+  -1,  7, // 25, 26
 
-                                              -1, -1, -1, -1, -1,	// ... 31
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,	// ... 47
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,	// ... 63
-} ;
+                                              -1, -1, -1, -1, -1, // ... 31
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // ... 47
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // ... 63
+};
 
 static int physToGpioR2[64] =
 {
-  -1,		  // 0
-  -1, -1,	// 1, 2
+  -1,     // 0
+  -1, -1, // 1, 2
    2, -1,
    3, -1,
    4, 14,
@@ -91,7 +91,7 @@ static int physToGpioR2[64] =
   10, -1,
    9, 25,
   11,  8,
-  -1,  7,	// 25, 26
+  -1,  7, // 25, 26
 
 // B+:
 
@@ -111,34 +111,39 @@ static int physToGpioR2[64] =
   -1, -1,
   -1, -1,
 
-// P5 connector on Rev 2 boards:
+  // P5 connector on Rev 2 boards:
 
- // Note: The original code had GPIO 28 and 29 here, 30 and 31 on the next line,
- // mapping positions 51-54 to P5 3-6. I believe this was an error, and moved
- // the GPIO numbers forward by two positions accordingly.
-  -1, -1,
-  28, 29, // 53, 54 (P5-3, P5-4)
-  30, 31, // 55, 56 (P5-5, P5-6)
-  -1, -1,
+   // Note: The original code had GPIO 28 and 29 here, 30 and 31 on the next line,
+   // mapping positions 51-54 to P5 3-6. I believe this was an error, and moved
+   // the GPIO numbers forward by two positions accordingly.
+    -1, -1,
+    28, 29, // 53, 54 (P5-3, P5-4)
+    30, 31, // 55, 56 (P5-5, P5-6)
+    -1, -1,
 
-// Filler:
+    // Filler:
 
-  -1, -1,
-  -1, -1,
-  -1
-} ;
-
-static int *physToGpio = physToGpioR2;
-
-enum GpioLayout {
-  UNCHECKED,
-  LAYOUT_1, // A, B, Rev 1, 1.1
-  LAYOUT_2, // A2, B2, A+, B+, CM, Pi2, Pi3, Zero
-  UNKNOWN
+      -1, -1,
+      -1, -1,
+      -1
 };
 
+static int* physToGpio = physToGpioR2;
+
+enum GpioLayout {
+    UNCHECKED,
+    LAYOUT_1, // A, B, Rev 1, 1.1
+    LAYOUT_2, // A2, B2, A+, B+, CM, Pi2, Pi3, Zero
+    UNKNOWN
+};
+
+#ifdef USE_FAKE_PIGPIO
+static GpioLayout gpioLayout = GpioLayout::UNKNOWN;
+static bool supportPhysPins = true;
+#else
 static GpioLayout gpioLayout = GpioLayout::UNCHECKED;
 static bool supportPhysPins = false;
+#endif
 
 int convertPinToGpio(int pinNumber, PinSystem pinSys) {
   if (gpioLayout == UNCHECKED) {
@@ -173,25 +178,25 @@ int convertPinToGpio(int pinNumber, PinSystem pinSys) {
   }
 
   switch (pinSys) {
-    case GPIO:
-      if (0 <= pinNumber && pinNumber <= 31)
-        return pinNumber;
-      else
-        return -1;
+  case GPIO:
+    if (0 <= pinNumber && pinNumber <= 31)
+      return pinNumber;
+    else
+      return -1;
 
-    case PHYS:
-      if (!supportPhysPins)
-        throw "Unknown hardware - physical pin numbering not supported";
-      else if (0 <= pinNumber && pinNumber <= 63)
-        return physToGpio[pinNumber];
-      else
-        return -1;
+  case PHYS:
+    if (!supportPhysPins)
+      throw "Unknown hardware - physical pin numbering not supported";
+    else if (0 <= pinNumber && pinNumber <= 63)
+      return physToGpio[pinNumber];
+    else
+      return -1;
 
-    case WIRING_PI:
-      if (0 <= pinNumber && pinNumber <= 63)
-        return wpiToGpio[pinNumber];
-      else
-        return -1;
+  case WIRING_PI:
+    if (0 <= pinNumber && pinNumber <= 63)
+      return wpiToGpio[pinNumber];
+    else
+      return -1;
   }
 
   return -1;

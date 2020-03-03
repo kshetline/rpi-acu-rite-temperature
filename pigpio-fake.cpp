@@ -5,6 +5,12 @@
 #include <iostream>
 #include <thread>
 #include <vector>
+#if defined(WIN32) || defined(WINDOWS)
+#define NOMINMAX
+#include <Windows.h>
+#include <synchapi.h>
+static int pgfPendingMicros = 0;
+#endif
 
 #define PGF_SUPPRESS_UNUSED_WARN(fn) void *_pgf_suw_##fn = ((void *) fn);
 
@@ -31,6 +37,20 @@ typedef struct {
 
 static std::vector<PGF_PinAlert> pgfCallbacks;
 
+static void pgfMicroSleep(int micros) {
+#if defined(WIN32) || defined(WINDOWS)
+  pgfPendingMicros += micros;
+  int hundredths = pgfPendingMicros / 10000;
+
+  if (hundredths > 0) {
+    pgfPendingMicros -= hundredths * 10000;
+    SleepEx(hundredths * 10, false);
+  }
+#else
+  std::this_thread::sleep_for(std::chrono::microseconds(micros));
+#endif
+}
+
 static int pgfApplyParity(int b) {
   int b0 = b;
   int sum = 0;
@@ -44,7 +64,7 @@ static int pgfApplyParity(int b) {
 }
 
 static void pgfSendPulse(int duration) {
-  std::this_thread::sleep_for(std::chrono::microseconds(duration));
+  pgfMicroSleep(duration);
   pgfPinHigh ^= true;
   pgfCurrMicros += duration;
 
@@ -127,7 +147,7 @@ static void pgfSendSignals() {
 }
 
 int gpioInitialise() {
-  std::srand(std::chrono::duration_cast<std::chrono::milliseconds>
+  std::srand((unsigned int) std::chrono::duration_cast<std::chrono::milliseconds>
     (std::chrono::system_clock::now().time_since_epoch()).count());
 
   return 0;

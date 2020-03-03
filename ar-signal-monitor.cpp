@@ -31,11 +31,13 @@
 #include <iostream>
 #include "pin-conversions.h"
 #include <stdlib.h>
-#include <sys/time.h>
-#include <tgmath.h>
+#include <ctgmath>
 #include <thread>
-#include <time.h>
-#include <unistd.h>
+#include <ctime>
+#if defined(WIN32) || defined(WINDOWS)
+#include <Windows.h>
+#include <cstdio>
+#endif
 
 using namespace std;
 
@@ -101,13 +103,14 @@ static const int RANK_MID   =  5;
 static const int RANK_LOW   =  2;
 static const int RANK_CHECK =  0;
 
-long ARTHSM::baseMicroTime = -1;
-long ARTHSM::extendedMicroTime = 0;
+int64_t ARTHSM::baseMicroTime = -1;
+int64_t ARTHSM::extendedMicroTime = 0;
 bool ARTHSM::initialSetupDone = false;
 uint32_t ARTHSM::lastMicroTimeU32 = 0;
 int ARTHSM::nextClientCallbackIndex = 0;
 bool ARTHSM::pinInUse[32] = {false};
 int ARTHSM::pinsInUse = 0;
+std::mutex ARTHSM::timeLock;
 
 static mutex dispatchLocks[32];
 static mutex queueLocks[32];
@@ -180,6 +183,13 @@ void ARTHSM::init(int dataPin, PinSystem pinSys) {
     throw "Pin already in use";
 
   if (!initialSetupDone) {
+  #if defined(WIN32) || defined(WINDOWS)
+    // It takes more effort to get the Windows console to display non-ASCII characters.
+    if (debugOutput) {
+      SetConsoleOutputCP(CP_UTF8);
+      setvbuf(stdout, nullptr, _IOFBF, 1000);
+    }
+  #endif
     cout << "Initializing pigpio\n";
 
     if (gpioInitialise() == PI_INIT_FAILED) {
@@ -223,20 +233,24 @@ void ARTHSM::enableDebugOutput(bool state) {
   debugOutput = state;
 }
 
-long ARTHSM::micros() {
+int64_t ARTHSM::micros() {
   return micros(gpioTick());
 }
 
-long ARTHSM::micros(uint32_t microTimeU32) {
+int64_t ARTHSM::micros(uint32_t microTimeU32) {
+  timeLock.lock();
+
   if (baseMicroTime < 0)
     baseMicroTime = microTimeU32;
 
-  if (microTimeU32 < lastMicroTimeU32)
+  if (microTimeU32 < lastMicroTimeU32 && microTimeU32 + 10'000'000 < lastMicroTimeU32)
     extendedMicroTime += 0x1'0000'0000;
 
   lastMicroTimeU32 = microTimeU32;
+  int64_t newTime = extendedMicroTime - baseMicroTime + microTimeU32;
+  timeLock.unlock();
 
-  return extendedMicroTime - baseMicroTime + microTimeU32;
+  return newTime;
 }
 
 int ARTHSM::getTiming(int offset) {
@@ -244,7 +258,7 @@ int ARTHSM::getTiming(int offset) {
 }
 
 // NOTE: getTiming() is relative to timingIndex, but setTiming() is relative to dataIndex.
-void ARTHSM::setTiming(int offset, unsigned short value) {
+void ARTHSM::setTiming(int offset, int value) {
   timings[mod(dataIndex + offset, RING_BUFFER_SIZE)] = value;
 }
 
@@ -319,7 +333,7 @@ int ARTHSM::getInt(int firstBit, int lastBit, bool skipParity) {
   return result;
 }
 
-void ARTHSM::signalHasChanged(int dataPin, int level, unsigned int tick, void *userData) {
+void ARTHSM::signalHasChanged(int dataPin, int level, uint32_t tick, void *userData) {
   if ((level != PI_LOW && level != PI_HIGH) || !pinInUse[dataPin])
     return;
 
@@ -331,7 +345,7 @@ void ARTHSM::signalHasChanged(int dataPin, int level, unsigned int tick, void *u
     signalLocks[dataPin].unlock();
 }
 
-void ARTHSM::signalHasChangedAux(long now, int pinState) {
+void ARTHSM::signalHasChangedAux(int64_t now, int pinState) {
   if (pinState == lastPinState) {
     signalLocks[dataPin].unlock();
     return;
@@ -339,7 +353,7 @@ void ARTHSM::signalHasChangedAux(long now, int pinState) {
 
   lastPinState = pinState;
 
-  unsigned short duration = min(now - lastSignalChange, 10000l);
+  int duration = (int) min(now - lastSignalChange, (int64_t) 10000);
 
   lastSignalChange = now;
   timingIndex = (timingIndex + 1) % RING_BUFFER_SIZE;
@@ -389,7 +403,7 @@ void ARTHSM::signalHasChangedAux(long now, int pinState) {
         ++badBits;
     }
 
-    int messageTime = now - frameStartTime;
+    int messageTime = (int) (now - frameStartTime);
 
     if (!gotBit && isSyncAcquired()) {
       if (syncTime1 < 0 || abs(now - syncTime1 - SYNC_TO_SYNC_TIME) < LONG_SYNC_TOL) {
@@ -448,21 +462,20 @@ string ARTHSM::getBitsAsString() {
 
 string getTimestamp() {
   char buf[32];
-  struct timeval time;
+  auto now = chrono::system_clock::now();
+  time_t now_tt = chrono::system_clock::to_time_t(now);
 
-  gettimeofday(&time, nullptr);
-  time_t sec = time.tv_sec;
-  strftime(buf, 32, "%R:%S.", localtime(&sec));
-  sprintf(&buf[9], "%03ld", (long) (time.tv_usec / 1000L));
+  strftime(buf, 32, "%R:%S.", localtime(&now_tt));
+  sprintf(&buf[9], "%03d", (int) ((chrono::duration_cast<chrono::milliseconds>(now.time_since_epoch())).count() % 1000));
 
   return string(buf);
 }
 
-void ARTHSM::processMessage(long frameEndTime) {
+void ARTHSM::processMessage(int64_t frameEndTime) {
   processMessage(frameEndTime, 0);
 }
 
-void ARTHSM::processMessage(long frameEndTime, int attempt) {
+void ARTHSM::processMessage(int64_t frameEndTime, int attempt) {
   auto integrity = checkDataIntegrity();
   char channel = "?C?BA"[getInt(CHANNEL_FIRST_BIT, CHANNEL_LAST_BIT) + 1];
   string allBits = (debugOutput ? getBitsAsString() + " (" + to_string(frameEndTime - frameStartTime) + "µs)" : "");
@@ -824,7 +837,7 @@ bool ARTHSM::findStartOfTriplet() {
   return true;
 }
 
-int ARTHSM::updateSignalQuality(char channel, long time, int rank) {
+int ARTHSM::updateSignalQuality(char channel, int64_t time, int rank) {
   if (channel == '?')
     return 0;
 
@@ -900,7 +913,7 @@ void ARTHSM::establishQualityCheck() {
            std::future_status::timeout) {
       dispatchLocks[dataPin].lock();
 
-      long now = micros();
+      int64_t now = micros();
       auto it = lastSensorData.begin();
 
       while (it != lastSensorData.end()) {
