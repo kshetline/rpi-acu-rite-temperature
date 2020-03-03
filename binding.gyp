@@ -16,9 +16,7 @@
       "include_dirs": [
         "<!(node -e \"require('node-addon-api').include\")",
         "../node_modules/node-addon-api",
-        "../node_modules/node-addon-api/src",
         "node_modules/node-addon-api",
-        "node_modules/node-addon-api/src",
         "/usr/include/node",
         "/usr/local/include/node"
       ],
@@ -28,7 +26,7 @@
       "libraries": [
         "-lpigpio"
       ],
-      "defines": ["NAPI_CPP_EXCEPTIONS", "NAPI_VERSION=4"],
+      "defines": ["NAPI_CPP_EXCEPTIONS"],
       "conditions": [
         ["OS==\"mac\"", {
           "defines": ["USE_FAKE_PIGPIO"],

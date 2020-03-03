@@ -14,6 +14,7 @@
 #include <pigpio.h>
 #endif
 #include "pin-conversions.h"
+//#define int64_t long
 
 static const int RING_BUFFER_SIZE = 512;
 
@@ -52,6 +53,7 @@ class ArTemperatureHumiditySignalMonitor {
     static int nextClientCallbackIndex;
     static bool pinInUse[];
     static int pinsInUse;
+    static std::mutex timeLock;
 
     enum DataIntegrity { BAD_BITS, BAD_PARITY, BAD_CHECKSUM, GOOD };
 
@@ -88,7 +90,7 @@ class ArTemperatureHumiditySignalMonitor {
     int64_t syncTime1 = -1;
     int64_t syncTime2 = -1;
     int timingIndex = -1;
-    unsigned short timings[RING_BUFFER_SIZE] = {0};
+    int timings[RING_BUFFER_SIZE] = {0};
 
   public:
     ArTemperatureHumiditySignalMonitor();
@@ -101,7 +103,7 @@ class ArTemperatureHumiditySignalMonitor {
     int getDataPin();
     void enableDebugOutput(bool state);
     void removeListener(int listenerId);
-    void static signalHasChanged(int dataPin, int level, unsigned int tick, void *userData);
+    void static signalHasChanged(int dataPin, int level, uint32_t tick, void *userData);
 
   private:
     DataIntegrity checkDataIntegrity();
@@ -120,7 +122,7 @@ class ArTemperatureHumiditySignalMonitor {
     void processMessage(int64_t frameEndTime);
     void processMessage(int64_t frameEndTime, int attempt);
     void sendData(const SensorData &sd);
-    void setTiming(int offset, unsigned short value);
+    void setTiming(int offset, int value);
     void signalHasChangedAux(int64_t now, int pinState);
     bool tryToCleanUpSignal();
     int updateSignalQuality(char channel, int64_t time, int rank);

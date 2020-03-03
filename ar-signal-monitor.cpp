@@ -110,6 +110,7 @@ uint32_t ARTHSM::lastMicroTimeU32 = 0;
 int ARTHSM::nextClientCallbackIndex = 0;
 bool ARTHSM::pinInUse[32] = {false};
 int ARTHSM::pinsInUse = 0;
+std::mutex ARTHSM::timeLock;
 
 static mutex dispatchLocks[32];
 static mutex queueLocks[32];
@@ -237,15 +238,19 @@ int64_t ARTHSM::micros() {
 }
 
 int64_t ARTHSM::micros(uint32_t microTimeU32) {
+  timeLock.lock();
+
   if (baseMicroTime < 0)
     baseMicroTime = microTimeU32;
 
-  if (microTimeU32 < lastMicroTimeU32)
+  if (microTimeU32 < lastMicroTimeU32 && microTimeU32 + 10'000'000 < lastMicroTimeU32)
     extendedMicroTime += 0x1'0000'0000;
 
   lastMicroTimeU32 = microTimeU32;
+  int64_t newTime = extendedMicroTime - baseMicroTime + microTimeU32;
+  timeLock.unlock();
 
-  return extendedMicroTime - baseMicroTime + microTimeU32;
+  return newTime;
 }
 
 int ARTHSM::getTiming(int offset) {
@@ -253,7 +258,7 @@ int ARTHSM::getTiming(int offset) {
 }
 
 // NOTE: getTiming() is relative to timingIndex, but setTiming() is relative to dataIndex.
-void ARTHSM::setTiming(int offset, unsigned short value) {
+void ARTHSM::setTiming(int offset, int value) {
   timings[mod(dataIndex + offset, RING_BUFFER_SIZE)] = value;
 }
 
@@ -328,7 +333,7 @@ int ARTHSM::getInt(int firstBit, int lastBit, bool skipParity) {
   return result;
 }
 
-void ARTHSM::signalHasChanged(int dataPin, int level, unsigned int tick, void *userData) {
+void ARTHSM::signalHasChanged(int dataPin, int level, uint32_t tick, void *userData) {
   if ((level != PI_LOW && level != PI_HIGH) || !pinInUse[dataPin])
     return;
 
@@ -348,7 +353,7 @@ void ARTHSM::signalHasChangedAux(int64_t now, int pinState) {
 
   lastPinState = pinState;
 
-  unsigned short duration = (unsigned short) min(now - lastSignalChange, (int64_t) 10000);
+  int duration = (int) min(now - lastSignalChange, (int64_t) 10000);
 
   lastSignalChange = now;
   timingIndex = (timingIndex + 1) % RING_BUFFER_SIZE;

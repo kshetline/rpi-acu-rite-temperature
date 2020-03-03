@@ -146,59 +146,59 @@ static bool supportPhysPins = false;
 #endif
 
 int convertPinToGpio(int pinNumber, PinSystem pinSys) {
-    if (gpioLayout == UNCHECKED) {
-        gpioLayout = UNKNOWN;
+  if (gpioLayout == UNCHECKED) {
+    gpioLayout = UNKNOWN;
 
-        ifstream revFile("/proc/cpuinfo");
+    ifstream revFile("/proc/cpuinfo");
 
-        if (revFile && revFile.is_open()) {
-            string line;
-            smatch match;
-            regex revPattern("^Revision\\s*:\\s*\\w*(\\w{4})$");
+    if (revFile && revFile.is_open()) {
+      string line;
+      smatch match;
+      regex revPattern("^Revision\\s*:\\s*\\w*(\\w{4})$");
 
-            while (getline(revFile, line)) {
-                if (regex_match(line, match, revPattern)) {
-                    string revLast4 = match.str(1);
+      while (getline(revFile, line)) {
+        if (regex_match(line, match, revPattern)) {
+          string revLast4 = match.str(1);
 
-                    if (revLast4 == "0002" || revLast4 == "0003") {
-                        gpioLayout = LAYOUT_1;
-                        wpiToGpio = wpiToGpioR1;
-                        physToGpio = physToGpioR1;
-                    }
-                    else
-                        gpioLayout = LAYOUT_2;
+          if (revLast4 == "0002" || revLast4 == "0003") {
+            gpioLayout = LAYOUT_1;
+            wpiToGpio = wpiToGpioR1;
+            physToGpio = physToGpioR1;
+          }
+          else
+            gpioLayout = LAYOUT_2;
 
-                    supportPhysPins = true;
-                    break;
-                }
-            }
-
-            revFile.close();
+          supportPhysPins = true;
+          break;
         }
+      }
+
+      revFile.close();
     }
+  }
 
-    switch (pinSys) {
-    case GPIO:
-        if (0 <= pinNumber && pinNumber <= 31)
-            return pinNumber;
-        else
-            return -1;
+  switch (pinSys) {
+  case GPIO:
+    if (0 <= pinNumber && pinNumber <= 31)
+      return pinNumber;
+    else
+      return -1;
 
-    case PHYS:
-        if (!supportPhysPins)
-            throw "Unknown hardware - physical pin numbering not supported";
-        else if (0 <= pinNumber && pinNumber <= 63)
-            return physToGpio[pinNumber];
-        else
-            return -1;
+  case PHYS:
+    if (!supportPhysPins)
+      throw "Unknown hardware - physical pin numbering not supported";
+    else if (0 <= pinNumber && pinNumber <= 63)
+      return physToGpio[pinNumber];
+    else
+      return -1;
 
-    case WIRING_PI:
-        if (0 <= pinNumber && pinNumber <= 63)
-            return wpiToGpio[pinNumber];
-        else
-            return -1;
-    }
+  case WIRING_PI:
+    if (0 <= pinNumber && pinNumber <= 63)
+      return wpiToGpio[pinNumber];
+    else
+      return -1;
+  }
 
-    return -1;
+  return -1;
 }
 PCONV_SUPPRESS_UNUSED_WARN(convertPinToGpio)
