@@ -1,4 +1,5 @@
 let defineStr = 'USE_FAKE_PIGPIO';
+let libRemove = '-lpigpio';
 
 if (process.platform === 'linux') {
   const fs = require('fs');
@@ -10,6 +11,7 @@ if (process.platform === 'linux') {
       for (const line of lines) {
         if (/\bModel\s*:\s*Raspberry Pi\b/i.test(line)) {
           defineStr = 'USE_REAL_PIGPIO';
+          libRemove = '';
           break;
         }
       }
@@ -18,4 +20,7 @@ if (process.platform === 'linux') {
   catch (err) {}
 }
 
-process.stdout.write(defineStr);
+if (!!process.argv.find(arg => arg === '-l'))
+  process.stdout.write(libRemove);
+else
+  process.stdout.write(defineStr);
