@@ -16,14 +16,14 @@
         'pin-conversions.h'
       ],
       'include_dirs': [
-        '<!(node -e \'require("node-addon-api").include\')',
+        '<!(node -e "require(\'node-addon-api\').include")',
         '../node_modules/node-addon-api',
         'node_modules/node-addon-api',
         '/usr/include/node',
         '/usr/local/include/node'
       ],
       'dependencies': [
-        '<!(node -p \'require("node-addon-api").gyp\')'
+        '<!(node -p "require(\'node-addon-api\').gyp")'
       ],
       'libraries': [
         '-lpigpio'
