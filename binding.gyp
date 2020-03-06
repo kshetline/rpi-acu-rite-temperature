@@ -10,6 +10,8 @@
         "ar-signal-monitor-node.cpp",
         "ar-signal-monitor.cpp",
         "ar-signal-monitor.h",
+        "pigpio-fake.cpp",
+        "pigpio-fake.h",
         "pin-conversions.cpp",
         "pin-conversions.h"
       ],
@@ -31,13 +33,11 @@
         ["OS==\"mac\"", {
           "defines": ["USE_FAKE_PIGPIO"],
           "libraries!": ["-lpigpio"],
-          "sources": ["pigpio-fake.cpp", "pigpio-fake.h"],
           "xcode_settings": {"GCC_ENABLE_CPP_EXCEPTIONS": "YES"}
         }],
         ["OS==\"win\"", {
           "defines": ["USE_FAKE_PIGPIO", "WINDOWS"],
           "libraries!": ["-lpigpio"],
-          "sources": ["pigpio-fake.cpp", "pigpio-fake.h"],
           "msvs_settings": {
             "VCCLCompilerTool": {
               "ExceptionHandling": 1,
@@ -45,6 +45,9 @@
             }
           }
         }],
+        ["OS==\"linux\"", {
+          "defines": ["<!(node fake-pigpio-check.js)"]
+        }]
       ],
     }
   ]
