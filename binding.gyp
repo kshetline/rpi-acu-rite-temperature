@@ -47,7 +47,7 @@
         }],
         ['OS=="linux"', {
           'defines': ['<!(node fake-pigpio-check.js)'],
-          '!libraries': ['<!(node fake-pigpio-check.js -l)']
+          'libraries!': ['<!(node fake-pigpio-check.js -l)']
         }]
       ],
     }
