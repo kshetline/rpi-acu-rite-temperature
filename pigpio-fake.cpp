@@ -121,7 +121,7 @@ static void pgfSendForChannel(int channel, int index) {
     // Increase odds for bad checksum over bad parity, and don't mess up channel bits.
     int badBit = 2 + std::rand() % 78;
     badBit = (badBit < 55 ? badBit : 48 + badBit % 8);
-    bytes[badBit / 8] ^= 1 << (badBit % 8);
+    bytes[badBit / 8] ^= 0x80 >> (badBit % 8);
   }
 
   for (int i = 0; i < 7; ++i)

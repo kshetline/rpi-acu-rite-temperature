@@ -571,6 +571,7 @@ void ARTHSM::processMessage(int64_t frameEndTime, int attempt) {
     sd.validChecksum = false;
     sd.rank = RANK_LOW;
     sd.validChecksum = false;
+    sd.collectionTime = frameEndTime;
     sd.repeatsCaptured = 0;
     enqueueSensorData(sd, allBits);
   }

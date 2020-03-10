@@ -14,7 +14,6 @@
 #include <pigpio.h>
 #endif
 #include "pin-conversions.h"
-//#define int64_t long
 
 static const int RING_BUFFER_SIZE = 512;
 
