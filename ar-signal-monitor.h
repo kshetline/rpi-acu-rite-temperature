@@ -25,20 +25,20 @@ class ArTemperatureHumiditySignalMonitor {
   public:
     class SensorData {
       public:
-        bool batteryLow;
-        char channel;
-        int64_t collectionTime;
-        int humidity;
-        int miscData1;
-        int miscData2;
-        int miscData3;
-        int rawTemp;
-        int rank;
-        int repeatsCaptured;
-        int signalQuality;
-        double tempCelsius;
-        double tempFahrenheit;
-        bool validChecksum;
+        bool batteryLow = false;
+        char channel = '?';
+        int64_t collectionTime = 0;
+        int humidity = -999;
+        int miscData1 = 0;
+        int miscData2 = 0;
+        int miscData3 = 0;
+        int rawTemp = -999;
+        int rank = 0;
+        int repeatsCaptured = 0;
+        int signalQuality = 0;
+        double tempCelsius = -999;
+        double tempFahrenheit = -999;
+        bool validChecksum = false;
 
         bool hasSameValues(const SensorData &sd) const;
         bool hasCloseValues(const SensorData &sd) const;
@@ -76,6 +76,7 @@ class ArTemperatureHumiditySignalMonitor {
     std::promise<void> heldDataExitSignal;
     bool holdingRecentData = false;
     std::thread *holdThread = nullptr;
+    int64_t lastConnectionCheck = 0;
     std::map<char, SensorData> lastSensorData;
     int lastPinState = -1;
     int64_t lastSignalChange = 0;

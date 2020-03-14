@@ -93,7 +93,7 @@ Napi::Value addSensorDataListener(const Napi::CallbackInfo &info) {
       monitor = new ARTHSM();
       monitor->init(pin, (PinSystem) pinSys);
     }
-    catch (char *err) {
+    catch (char const *err) {
       cerr << err << endl;
       Napi::TypeError::New(env, err).ThrowAsJavaScriptException();
       return env.Undefined();
@@ -173,12 +173,38 @@ void removeSensorDataListener(const Napi::CallbackInfo &info) {
   }
 }
 
+Napi::Value convertPinJS(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
+
+  if (info.Length() != 3) {
+    Napi::TypeError::New(env, "3 arguments should be provided").ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+
+  int pin = info[0].As<Napi::Number>().Int32Value();
+  int pinSysFrom = info[1].As<Napi::Number>().Int32Value();
+  int pinSysTo = info[2].As<Napi::Number>().Int32Value();
+
+  try {
+    int result = convertPin(pin, (PinSystem) pinSysFrom, (PinSystem) pinSysTo);
+
+    return Napi::Number::New(env, result);
+  }
+  catch (char const *err) {
+    Napi::TypeError::New(env, err).ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+}
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set(Napi::String::New(env, "addSensorDataListener"),
               Napi::Function::New(env, addSensorDataListener));
 
   exports.Set(Napi::String::New(env, "removeSensorDataListener"),
               Napi::Function::New(env, removeSensorDataListener));
+
+  exports.Set(Napi::String::New(env, "convertPin"),
+              Napi::Function::New(env, convertPinJS));
 
   return exports;
 }

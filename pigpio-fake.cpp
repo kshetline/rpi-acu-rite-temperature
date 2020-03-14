@@ -68,8 +68,10 @@ static void pgfSendPulse(int duration) {
   pgfPinHigh ^= true;
   pgfCurrMicros += duration;
 
-  for (auto pcb : pgfCallbacks)
-    pcb.callback(pcb.pin, pgfPinHigh ? PI_LOW : PI_HIGH, pgfCurrMicros, pcb.miscData);
+  for (auto pcb : pgfCallbacks) {
+    if (pcb.pin != 0)
+      pcb.callback(pcb.pin, pgfPinHigh ? PI_LOW : PI_HIGH, pgfCurrMicros, pcb.miscData);
+  }
 }
 
 static void pgfSendByte(int b) {
@@ -137,8 +139,10 @@ static void pgfSendForChannel(int channel, int index) {
 static void pgfSendSignals() {
   std::thread([]() {
     while (pgfRunning) {
-      for (int i = 0; i < 3; ++i)
-        pgfSendForChannel(pgfChannels[i], i);
+      for (int i = 0; i < 3; ++i) {
+        if (i != 2 || pgfCurrMicros < 150'000'000) // Channel C cuts out after 2.5 minutes
+          pgfSendForChannel(pgfChannels[i], i);
+      }
 
       std::this_thread::sleep_for(std::chrono::seconds(PGF_MESSAGE_RATE));
       pgfCurrMicros += PGF_MESSAGE_RATE * 1000000;
