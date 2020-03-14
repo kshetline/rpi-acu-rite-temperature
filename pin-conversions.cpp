@@ -145,7 +145,7 @@ static GpioLayout gpioLayout = GpioLayout::UNCHECKED;
 static bool supportPhysPins = false;
 #endif
 
-int convertPinToGpio(int pinNumber, PinSystem pinSys) {
+static void getLayout() {
   if (gpioLayout == UNCHECKED) {
     gpioLayout = UNKNOWN;
 
@@ -176,29 +176,75 @@ int convertPinToGpio(int pinNumber, PinSystem pinSys) {
       revFile.close();
     }
   }
+}
 
-  switch (pinSys) {
-  case GPIO:
-    if (0 <= pinNumber && pinNumber <= 31)
-      return pinNumber;
-    else
-      return -1;
+static bool convertInit = false;
+static int gpioToPhys[32] = {-1};
+static int gpioToWPi[32] = {-1};
 
-  case PHYS:
-    if (!supportPhysPins)
-      throw "Unknown hardware - physical pin numbering not supported";
-    else if (0 <= pinNumber && pinNumber <= 63)
-      return physToGpio[pinNumber];
-    else
-      return -1;
+static void getConversions() {
+  getLayout();
 
-  case WIRING_PI:
-    if (0 <= pinNumber && pinNumber <= 63)
-      return wpiToGpio[pinNumber];
-    else
-      return -1;
+  if (convertInit || gpioLayout == UNKNOWN)
+    return;
+
+  for (int i = 0; i < 64; ++i) {
+    int gpio = wpiToGpio[i];
+
+    if (gpio >= 0)
+      gpioToWPi[gpio] = i;
+
+    gpio = physToGpio[i];
+
+    if (gpio >= 0)
+      gpioToPhys[gpio] = i;
+  }
+
+  convertInit = true;
+}
+
+int convertPin(int pinNumber, PinSystem pinSysFrom, PinSystem pinSysTo) {
+  getConversions();
+
+  if (!supportPhysPins && (pinSysFrom == PHYS || pinSysTo == PHYS))
+    throw "Unknown hardware - physical pin numbering not supported";
+  else if (pinNumber < 0 || pinNumber > 63 || (pinSysFrom != PHYS && pinNumber > 31))
+    return -1;
+
+  int gpio;
+
+  switch (pinSysFrom) {
+    case GPIO:
+      switch (pinSysTo) {
+        case GPIO: return pinNumber;
+        case PHYS: return gpioToPhys[pinNumber];
+        case WIRING_PI: return gpioToWPi[pinNumber];
+        break;
+      }
+      break;
+
+    case PHYS:
+      switch (pinSysTo) {
+        case GPIO: return physToGpio[pinNumber];
+        case PHYS: return pinNumber;
+        case WIRING_PI: return (gpio = physToGpio[pinNumber]) >= 0 ? gpioToWPi[gpio] : -1;
+        break;
+      }
+      break;
+
+    case WIRING_PI:
+      switch (pinSysTo) {
+        case GPIO: return wpiToGpio[pinNumber];
+        case PHYS: return (gpio = wpiToGpio[pinNumber]) >= 0 ? gpioToPhys[gpio] : -1;
+        case WIRING_PI: return pinNumber;
+        break;
+      }
   }
 
   return -1;
+}
+
+int convertPinToGpio(int pinNumber, PinSystem pinSys) {
+  return convertPin(pinNumber, pinSys, GPIO);
 }
 PCONV_SUPPRESS_UNUSED_WARN(convertPinToGpio)

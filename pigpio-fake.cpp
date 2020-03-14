@@ -68,8 +68,10 @@ static void pgfSendPulse(int duration) {
   pgfPinHigh ^= true;
   pgfCurrMicros += duration;
 
-  for (auto pcb : pgfCallbacks)
-    pcb.callback(pcb.pin, pgfPinHigh ? PI_LOW : PI_HIGH, pgfCurrMicros, pcb.miscData);
+  for (auto pcb : pgfCallbacks) {
+    if (pcb.pin != 0)
+      pcb.callback(pcb.pin, pgfPinHigh ? PI_LOW : PI_HIGH, pgfCurrMicros, pcb.miscData);
+  }
 }
 
 static void pgfSendByte(int b) {

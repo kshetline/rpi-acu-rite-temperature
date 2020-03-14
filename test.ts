@@ -1,9 +1,42 @@
-import { addSensorDataListener, removeSensorDataListener } from './index';
+import { addSensorDataListener, removeSensorDataListener,
+         convertPin, PinSystem } from './index';
 
 let pin = '';
+let pinouts = false;
 
-for (let i = 0; i < process.argv.length - 1 && !pin; ++i)
+for (let i = 0; i < process.argv.length && !pin; ++i) {
   pin = process.argv[i] === '-p' ? process.argv[i + 1]?.toLowerCase().trim() : '';
+  pinouts = pinouts || process.argv[i] === '--pinouts';
+}
+
+if (pinouts) {
+  for (let i = 1; i <= 56; ++i) {
+    if (41 <= i && i <= 49)
+      continue;
+
+    console.log('phys %s -> gpio %s -> wpi %s', i,
+      convertPin(i, PinSystem.PHYS, PinSystem.GPIO),
+      convertPin(i, PinSystem.PHYS, PinSystem.WIRING_PI));
+  }
+
+  console.log();
+
+  for (let i = 0; i <= 31; ++i) {
+    console.log('gpio %s -> phys %s -> wpi %s', i,
+      convertPin(i, PinSystem.GPIO, PinSystem.PHYS),
+      convertPin(i, PinSystem.GPIO, PinSystem.WIRING_PI));
+  }
+
+  console.log();
+
+  for (let i = 0; i <= 31; ++i) {
+    console.log('wpi %s -> gpio %s -> phys %s', i,
+      convertPin(i, PinSystem.WIRING_PI, PinSystem.GPIO),
+      convertPin(i, PinSystem.WIRING_PI, PinSystem.PHYS));
+  }
+
+  process.exit(0);
+}
 
 pin = pin || '27';
 console.log(`Awaiting humidity/temperature data on pin ${pin}...`);

@@ -47,3 +47,27 @@ export function addSensorDataListener(pin: number | string, pinSysOrCallback: Pi
 export function removeSensorDataListener(callbackId: number): void {
   ArSignalMonitor.removeSensorDataListener(callbackId);
 }
+
+export function convertPin(pin: number, pinSystemFrom: PinSystem, pinSystemTo: PinSystem): number;
+export function convertPin(pin: string, pinSystemTo: PinSystem): number;
+export function convertPin(pin: number | string, pinSystem0: PinSystem, pinSystem1?: PinSystem): number {
+  let pinNumber: number;
+  let pinSystemFrom: number;
+  let pinSystemTo: number;
+
+  if (typeof pin === 'string') {
+    pinNumber = parseFloat(pin) || 27;
+    const pinSystemIndex = 'pwv'.indexOf(pin.substr(-1).toLowerCase()) + 1;
+    pinSystemFrom = [PinSystem.GPIO, PinSystem.PHYS, PinSystem.WIRING_PI, PinSystem.VIRTUAL][pinSystemIndex];
+    pinSystemTo = pinSystem0;
+  }
+  else if (pinSystem1 == null)
+    throw new Error('Target pin system not specified');
+  else {
+    pinNumber = pin;
+    pinSystemFrom = pinSystem0;
+    pinSystemTo = pinSystem1;
+  }
+
+  return ArSignalMonitor.convertPin(pinNumber, pinSystemFrom, pinSystemTo);
+}

@@ -90,10 +90,12 @@ static const int TEMPERATURE_LAST_BIT =  47;
 static const int CHECKSUM_FIRST_BIT =    48;
 static const int CHECKSUM_LAST_BIT =     55;
 
+static const int DEAD_AIR_LIMIT =        60'000'000; // 1 minute
 static const int REPEAT_SUPPRESSION =    60'000'000; // 1 minute
 static const int REUSE_OLD_DATA_LIMIT = 600'000'000; // 10 minutes
 
 static const int SIGNAL_QUALITY_CHECK_RATE =  90'000'000; // 90 seconds
+static const int SIGNAL_QUALITY_CHECK_DIVS =           9;
 static const int SIGNAL_QUALITY_WINDOW =     300'000'000; // 5 minutes
 static const int DESIRED_SIGNAL_RATE =        30'000'000; // At least one channel update every 30 seconds
 
@@ -183,13 +185,13 @@ void ARTHSM::init(int dataPin, PinSystem pinSys) {
     throw "Pin already in use";
 
   if (!initialSetupDone) {
-  #if defined(WIN32) || defined(WINDOWS)
+#if defined(WIN32) || defined(WINDOWS)
     // It takes more effort to get the Windows console to display non-ASCII characters.
     if (debugOutput) {
       SetConsoleOutputCP(CP_UTF8);
       setvbuf(stdout, nullptr, _IOFBF, 1000);
     }
-  #endif
+#endif
     cout << "Initializing pigpio\n";
 
     if (gpioInitialise() == PI_INIT_FAILED) {
@@ -205,6 +207,7 @@ void ARTHSM::init(int dataPin, PinSystem pinSys) {
   pinInUse[dataPin] = true;
   this->dataPin = dataPin;
 
+  lastConnectionCheck = lastSignalChange = micros();
   establishQualityCheck();
   gpioSetMode(dataPin, PI_INPUT);
   gpioGlitchFilter(dataPin, 100);
@@ -346,6 +349,8 @@ void ARTHSM::signalHasChanged(int dataPin, int level, uint32_t tick, void *userD
 }
 
 void ARTHSM::signalHasChangedAux(int64_t now, int pinState) {
+  lastConnectionCheck = now;
+
   if (pinState == lastPinState) {
     signalLocks[dataPin].unlock();
     return;
@@ -568,11 +573,8 @@ void ARTHSM::processMessage(int64_t frameEndTime, int attempt) {
     SensorData sd;
 
     sd.channel = channel;
-    sd.validChecksum = false;
     sd.rank = RANK_LOW;
-    sd.validChecksum = false;
     sd.collectionTime = frameEndTime;
-    sd.repeatsCaptured = 0;
     enqueueSensorData(sd, allBits);
   }
 }
@@ -910,11 +912,34 @@ void ARTHSM::establishQualityCheck() {
   qualityCheckLoopControl = qualityCheckExitSignal.get_future();
 
   thread([this]() {
-    while (qualityCheckLoopControl.wait_for(std::chrono::microseconds(SIGNAL_QUALITY_CHECK_RATE)) ==
+    int divCount = 0;
+
+    while (qualityCheckLoopControl.wait_for(
+           std::chrono::microseconds(SIGNAL_QUALITY_CHECK_RATE / SIGNAL_QUALITY_CHECK_DIVS)) ==
            std::future_status::timeout) {
       dispatchLocks[dataPin].lock();
 
       int64_t now = micros();
+
+      if (lastConnectionCheck + DEAD_AIR_LIMIT < now) {
+        ARTHSM *sm = this;
+
+        thread([sm]() {
+          dispatchLocks[sm->dataPin].lock();
+          SensorData sd;
+          sd.channel = '-';
+          sm->sendData(sd);
+          dispatchLocks[sm->dataPin].unlock();
+        }).detach();
+
+        lastConnectionCheck = now;
+      }
+
+      if (++divCount < SIGNAL_QUALITY_CHECK_DIVS) {
+        dispatchLocks[dataPin].unlock();
+        continue;
+      }
+
       auto it = lastSensorData.begin();
 
       while (it != lastSensorData.end()) {
