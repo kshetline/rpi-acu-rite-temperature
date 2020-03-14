@@ -93,7 +93,7 @@ Napi::Value addSensorDataListener(const Napi::CallbackInfo &info) {
       monitor = new ARTHSM();
       monitor->init(pin, (PinSystem) pinSys);
     }
-    catch (char *err) {
+    catch (char const *err) {
       cerr << err << endl;
       Napi::TypeError::New(env, err).ThrowAsJavaScriptException();
       return env.Undefined();
@@ -182,11 +182,18 @@ Napi::Value convertPinJS(const Napi::CallbackInfo &info) {
   }
 
   int pin = info[0].As<Napi::Number>().Int32Value();
-  int pinSysFrom = info[1].As<Napi::Number>().Int32Value();;
-  int pinSysTo = info[2].As<Napi::Number>().Int32Value();;
-  int result = convertPin(pin, (PinSystem) pinSysFrom, (PinSystem) pinSysTo);
+  int pinSysFrom = info[1].As<Napi::Number>().Int32Value();
+  int pinSysTo = info[2].As<Napi::Number>().Int32Value();
 
-  return Napi::Number::New(env, result);
+  try {
+    int result = convertPin(pin, (PinSystem) pinSysFrom, (PinSystem) pinSysTo);
+
+    return Napi::Number::New(env, result);
+  }
+  catch (char const *err) {
+    Napi::TypeError::New(env, err).ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
 }
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {

@@ -133,12 +133,12 @@ static int* physToGpio = physToGpioR2;
 enum GpioLayout {
     UNCHECKED,
     LAYOUT_1, // A, B, Rev 1, 1.1
-    LAYOUT_2, // A2, B2, A+, B+, CM, Pi2, Pi3, Zero
+    LAYOUT_2, // A2, B2, A+, B+, CM, Pi2, Pi3, Pi4, Zero
     UNKNOWN
 };
 
 #ifdef USE_FAKE_PIGPIO
-static GpioLayout gpioLayout = GpioLayout::UNKNOWN;
+static GpioLayout gpioLayout = GpioLayout::LAYOUT_2;
 static bool supportPhysPins = true;
 #else
 static GpioLayout gpioLayout = GpioLayout::UNCHECKED;

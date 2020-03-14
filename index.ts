@@ -26,7 +26,8 @@ export function addSensorDataListener(pin: number | string, pinSysOrCallback: Pi
   let pinSystem = PinSystem.GPIO;
 
   if (typeof pin === 'string') {
-    pinNumber = parseFloat(pin) || 27;
+    pinNumber = parseFloat(pin);
+    pinNumber = (isNaN(pinNumber) ? 27 : pinNumber);
     const pinSystemIndex = 'pwv'.indexOf(pin.substr(-1).toLowerCase()) + 1;
     pinSystem = [PinSystem.GPIO, PinSystem.PHYS, PinSystem.WIRING_PI, PinSystem.VIRTUAL][pinSystemIndex];
   }
@@ -49,6 +50,7 @@ export function removeSensorDataListener(callbackId: number): void {
 }
 
 export function convertPin(pin: number, pinSystemFrom: PinSystem, pinSystemTo: PinSystem): number;
+export function convertPin(gpioPin: number, pinSystemTo: PinSystem): number;
 export function convertPin(pin: string, pinSystemTo: PinSystem): number;
 export function convertPin(pin: number | string, pinSystem0: PinSystem, pinSystem1?: PinSystem): number {
   let pinNumber: number;
@@ -56,17 +58,23 @@ export function convertPin(pin: number | string, pinSystem0: PinSystem, pinSyste
   let pinSystemTo: number;
 
   if (typeof pin === 'string') {
-    pinNumber = parseFloat(pin) || 27;
+    pinNumber = parseFloat(pin);
+    pinNumber = (isNaN(pinNumber) ? 27 : pinNumber);
     const pinSystemIndex = 'pwv'.indexOf(pin.substr(-1).toLowerCase()) + 1;
     pinSystemFrom = [PinSystem.GPIO, PinSystem.PHYS, PinSystem.WIRING_PI, PinSystem.VIRTUAL][pinSystemIndex];
     pinSystemTo = pinSystem0;
   }
-  else if (pinSystem1 == null)
-    throw new Error('Target pin system not specified');
   else {
     pinNumber = pin;
-    pinSystemFrom = pinSystem0;
-    pinSystemTo = pinSystem1;
+
+    if (pinSystem1 == null) {
+      pinSystemFrom = PinSystem.GPIO;
+      pinSystemTo = pinSystem0;
+    }
+    else {
+      pinSystemFrom = pinSystem0;
+      pinSystemTo = pinSystem1;
+    }
   }
 
   return ArSignalMonitor.convertPin(pinNumber, pinSystemFrom, pinSystemTo);

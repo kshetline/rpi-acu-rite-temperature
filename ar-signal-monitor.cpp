@@ -483,7 +483,7 @@ void ARTHSM::processMessage(int64_t frameEndTime) {
 void ARTHSM::processMessage(int64_t frameEndTime, int attempt) {
   auto integrity = checkDataIntegrity();
   char channel = "?C?BA"[getInt(CHANNEL_FIRST_BIT, CHANNEL_LAST_BIT) + 1];
-  string allBits = (debugOutput ? getBitsAsString() + " (" + to_string(frameEndTime - frameStartTime) + "µs)" : "");
+  string allBits = (debugOutput ? getBitsAsString() + " (" + to_string(frameEndTime - frameStartTime) + u8"µs)" : "");
 #if defined(SHOW_RAW_DATA) || defined(SHOW_MARGINAL_DATA)
 #define TIMES_ARRAY_ARG , changeCount, times
   int changeCount = mod(dataEndIndex - dataIndex, RING_BUFFER_SIZE);
