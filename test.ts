@@ -1,5 +1,4 @@
-import { addSensorDataListener, removeSensorDataListener,
-         convertPin, PinSystem } from './index';
+import { addSensorDataListener, convertPin, PinSystem, removeSensorDataListener } from './index';
 
 let pin = '';
 let pinouts = false;

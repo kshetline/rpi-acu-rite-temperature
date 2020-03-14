@@ -47,7 +47,7 @@ export interface HtSensorData {
   validChecksum: boolean; // Is the data fully trustworthy?
 }
 ```
-`channel` is either the single-letter channel identifier A, B, or C, or it's a `-` (dash), indicating that no signal at all (not even radio noise) has been detected for a minute or more. Since an RF receiver module typically outputs a lot of random noise even when it isn't receiving a valid transmission, “dead air” generally means that you've selected the wrong pin number, or the RF module is disconnected,  or it is otherwise not functioning.
+`channel` is either the single-letter channel identifier A, B, or C, or it's a `-` (dash), indicating that no signal at all (not even radio noise) has been detected for 60 seconds or more. Since an RF receiver module typically outputs a lot of random noise even when it isn't receiving a valid transmission, “dead air” generally means that you've selected the wrong pin number, or the RF module is disconnected,  or it is otherwise not functioning.
 
 Even after a dead air indication has been received, and before signal has been regained, you might receive a few more updates for channels A, B, or C. These are delivered while the signal quality rating of each channel degrades toward zero during the absence of reception.
 
@@ -91,6 +91,8 @@ This is a utility function for converting between Raspberry Pi pin numbering sys
 1. pass a numeric pin number, the pin system of that pin number, and the pin system you wish to convert to.
 1. pass a numeric GPIO number and the pin system you wish to convert to.
 1. pass a pin number and pin system as one combined string, followed by the pin system you wish to convert to. The pin system for the original pin number is specified by an appended letter (`g`, `p`, `w`, or `v`, as described above), defaulting to GPIO if no letter is provided.
+
+The function returns the converted pin value. If there is no valid conversion, the function returns `-1`.
 
 ```
 export function convertPin(pin: number, pinSystemFrom: PinSystem, pinSystemTo: PinSystem): number;

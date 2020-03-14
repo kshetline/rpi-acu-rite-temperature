@@ -917,13 +917,12 @@ void ARTHSM::establishQualityCheck() {
     while (qualityCheckLoopControl.wait_for(
            std::chrono::microseconds(SIGNAL_QUALITY_CHECK_RATE / SIGNAL_QUALITY_CHECK_DIVS)) ==
            std::future_status::timeout) {
-      dispatchLocks[dataPin].lock();
-
       int64_t now = micros();
 
       if (lastConnectionCheck + DEAD_AIR_LIMIT < now) {
         ARTHSM *sm = this;
 
+        lastConnectionCheck = now;
         thread([sm]() {
           dispatchLocks[sm->dataPin].lock();
           SensorData sd;
@@ -931,14 +930,13 @@ void ARTHSM::establishQualityCheck() {
           sm->sendData(sd);
           dispatchLocks[sm->dataPin].unlock();
         }).detach();
-
-        lastConnectionCheck = now;
       }
 
-      if (++divCount < SIGNAL_QUALITY_CHECK_DIVS) {
-        dispatchLocks[dataPin].unlock();
+      if (++divCount < SIGNAL_QUALITY_CHECK_DIVS)
         continue;
-      }
+
+      divCount = 0;
+      dispatchLocks[dataPin].lock();
 
       auto it = lastSensorData.begin();
 
