@@ -10,6 +10,7 @@
 *.js.map
 ar-signal-monitor-test
 !fake-pigpio-check.js
+!fake-gpiod-check.js
 
 # dependencies
 /node_modules

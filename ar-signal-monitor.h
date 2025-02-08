@@ -8,10 +8,10 @@
 #include <utility>
 #include <vector>
 
-#ifdef USE_FAKE_PIGPIO
-#include "pigpio-fake.h"
+#ifdef USE_FAKE_GPIO
+#include "gpiod-fake.h"
 #else
-#include <pigpio.h>
+#include <gpiod.h>
 #endif
 #include "pin-conversions.h"
 
@@ -20,6 +20,9 @@ static const int RING_BUFFER_SIZE = 512;
 #undef SHOW_RAW_DATA
 #undef SHOW_MARGINAL_DATA
 #undef SHOW_CORRUPT_DATA
+
+#define PI_LOW  GPIOD_CTXLESS_EVENT_CB_FALLING_EDGE
+#define PI_HIGH GPIOD_CTXLESS_EVENT_CB_RISING_EDGE
 
 class ArTemperatureHumiditySignalMonitor {
   public:
@@ -45,14 +48,10 @@ class ArTemperatureHumiditySignalMonitor {
     };
 
   private:
-    static int64_t baseMicroTime;
-    static int64_t extendedMicroTime;
     static bool initialSetupDone;
-    static uint32_t lastMicroTimeU32;
     static int nextClientCallbackIndex;
     static bool pinInUse[];
     static int pinsInUse;
-    static std::mutex timeLock;
 
     enum DataIntegrity { BAD_BITS, BAD_PARITY, BAD_CHECKSUM, GOOD };
 
@@ -79,6 +78,7 @@ class ArTemperatureHumiditySignalMonitor {
     int64_t lastConnectionCheck = 0;
     std::map<char, SensorData> lastSensorData;
     int lastPinState = -1;
+    int64_t signalChangeBeforeLast = 0;
     int64_t lastSignalChange = 0;
     int potentialDataIndex = 0;
     std::promise<void> qualityCheckExitSignal;
@@ -103,7 +103,7 @@ class ArTemperatureHumiditySignalMonitor {
     int getDataPin();
     void enableDebugOutput(bool state);
     void removeListener(int listenerId);
-    void static signalHasChanged(int dataPin, int level, uint32_t tick, void *userData);
+    int static signalHasChanged(int eventType, unsigned int dataPin, const timespec* tick, void *userData);
 
   private:
     DataIntegrity checkDataIntegrity();
@@ -128,7 +128,7 @@ class ArTemperatureHumiditySignalMonitor {
     int updateSignalQuality(char channel, int64_t time, int rank);
 
     static int64_t micros();
-    static int64_t micros(uint32_t microTimeU32);
+    static int64_t micros(const timespec* ts);
     static bool isZeroBit(int t0, int t1);
     static bool isOneBit(int t0, int t1);
     static bool isShortSync(int t0, int t1);

@@ -1,10 +1,11 @@
 /*
  * ar-signal-monitor.cpp
  *
- * Copyright 2020 Kerry Shetline <kerry@shetline.com>
+ * Copyright 2020-2025 Kerry Shetline <kerry@shetline.com>
  *
  * This code is derived from code originally written by Ray Wang
  * (Rayshobby LLC), http://rayshobby.net/?p=8998
+ * Redesigned in 2025 to work with libgpiod instead of pigpio.
  *
  * MIT
  *
@@ -105,14 +106,10 @@ static const int RANK_MID   =  5;
 static const int RANK_LOW   =  2;
 static const int RANK_CHECK =  0;
 
-int64_t ARTHSM::baseMicroTime = -1;
-int64_t ARTHSM::extendedMicroTime = 0;
 bool ARTHSM::initialSetupDone = false;
-uint32_t ARTHSM::lastMicroTimeU32 = 0;
 int ARTHSM::nextClientCallbackIndex = 0;
 bool ARTHSM::pinInUse[32] = {false};
 int ARTHSM::pinsInUse = 0;
-std::mutex ARTHSM::timeLock;
 
 static mutex dispatchLocks[32];
 static mutex queueLocks[32];
@@ -136,7 +133,8 @@ ARTHSM::~ArTemperatureHumiditySignalMonitor() {
     int oldPin = dataPin;
 
     dataPin = -1;
-    gpioSetAlertFunc(oldPin, nullptr);
+    gpiod_ctxless_event_monitor("0", GPIOD_CTXLESS_EVENT_BOTH_EDGES, oldPin, false, "",
+      nullptr, nullptr, nullptr, nullptr);
 
     dispatchLocks[oldPin].lock();
     heldDataExitSignal.set_value();
@@ -161,13 +159,6 @@ ARTHSM::~ArTemperatureHumiditySignalMonitor() {
       queueLocks[oldPin].unlock();
 
     pinInUse[oldPin] = false;
-
-    if (--pinsInUse == 0 && initialSetupDone) {
-      cout << "Terminating pigpio\n";
-      gpioTerminate();
-      cout << "pigpio terminated\n";
-      initialSetupDone = false;
-    }
   }
 }
 
@@ -192,14 +183,7 @@ void ARTHSM::init(int dataPin, PinSystem pinSys) {
       setvbuf(stdout, nullptr, _IOFBF, 1000);
     }
 #endif
-    cout << "Initializing pigpio\n";
 
-    if (gpioInitialise() == PI_INIT_FAILED) {
-      cerr << "Failed to initialize pigpio\n";
-      throw "WiringPi could not be set up";
-    }
-
-    cout << "pigpio initialized\n";
     initialSetupDone = true;
   }
 
@@ -209,9 +193,8 @@ void ARTHSM::init(int dataPin, PinSystem pinSys) {
 
   lastConnectionCheck = lastSignalChange = micros();
   establishQualityCheck();
-  gpioSetMode(dataPin, PI_INPUT);
-  gpioGlitchFilter(dataPin, 100);
-  gpioSetAlertFuncEx(dataPin, signalHasChanged, this);
+  gpiod_ctxless_event_monitor("0", GPIOD_CTXLESS_EVENT_BOTH_EDGES, dataPin, false, "",
+      nullptr, nullptr, signalHasChanged, this);
 }
 
 int ARTHSM::getDataPin() {
@@ -237,23 +220,14 @@ void ARTHSM::enableDebugOutput(bool state) {
 }
 
 int64_t ARTHSM::micros() {
-  return micros(gpioTick());
+  struct timespec ts;
+
+  clock_gettime(CLOCK_REALTIME, &ts);
+  return micros(&ts);
 }
 
-int64_t ARTHSM::micros(uint32_t microTimeU32) {
-  timeLock.lock();
-
-  if (baseMicroTime < 0)
-    baseMicroTime = microTimeU32;
-
-  if (microTimeU32 < lastMicroTimeU32 && microTimeU32 + 10'000'000 < lastMicroTimeU32)
-    extendedMicroTime += 0x1'0000'0000;
-
-  lastMicroTimeU32 = microTimeU32;
-  int64_t newTime = extendedMicroTime - baseMicroTime + microTimeU32;
-  timeLock.unlock();
-
-  return newTime;
+int64_t ARTHSM::micros(const timespec* ts) {
+  return ts->tv_sec * 1000000 + ts->tv_nsec / 1000;
 }
 
 int ARTHSM::getTiming(int offset) {
@@ -336,16 +310,18 @@ int ARTHSM::getInt(int firstBit, int lastBit, bool skipParity) {
   return result;
 }
 
-void ARTHSM::signalHasChanged(int dataPin, int level, uint32_t tick, void *userData) {
-  if ((level != PI_LOW && level != PI_HIGH) || !pinInUse[dataPin])
-    return;
+int ARTHSM::signalHasChanged(int eventType, unsigned int dataPin, const timespec* tick, void *userData) {
+  if ((eventType != PI_LOW && eventType != PI_HIGH) || !pinInUse[dataPin])
+    return 0;
 
   signalLocks[dataPin].lock();
 
   if (userData != nullptr && ((ARTHSM*) userData)->dataPin >= 0)
-    ((ARTHSM*) userData)->signalHasChangedAux(micros(tick), level);
+    ((ARTHSM*) userData)->signalHasChangedAux(micros(tick), eventType);
   else
     signalLocks[dataPin].unlock();
+
+  return 0;
 }
 
 void ARTHSM::signalHasChangedAux(int64_t now, int pinState) {
@@ -360,9 +336,18 @@ void ARTHSM::signalHasChangedAux(int64_t now, int pinState) {
 
   int duration = (int) min(now - lastSignalChange, (int64_t) 10000);
 
+  // if (duration < TOLERANCE) {
+  //   cout << "rejecting glitch\n";
+  //   lastSignalChange = signalChangeBeforeLast;
+  //   signalLocks[dataPin].unlock();
+  //   return;
+  // }
+
+  signalChangeBeforeLast = lastSignalChange;
   lastSignalChange = now;
   timingIndex = (timingIndex + 1) % RING_BUFFER_SIZE;
   timings[timingIndex] = duration;
+  // cout << "pinState: " << pinState << ", duration: " << duration << "\n";
 
   if (pinState == PI_HIGH) {
     int currentIndex = (timingIndex + 1) % RING_BUFFER_SIZE;
