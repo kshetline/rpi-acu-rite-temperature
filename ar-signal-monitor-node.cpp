@@ -67,7 +67,7 @@ static void callBackHandler(ARTHSM::SensorData sensorData, void *miscData) {
   if (napi_acquire_threadsafe_function(*cbi->tsfn) == napi_ok)
     napi_call_threadsafe_function(*cbi->tsfn, sensorDataCopy, napi_tsfn_blocking);
   else
-    delete sensorDataCopy;
+    free(sensorDataCopy);
 }
 
 Napi::Value addSensorDataListener(const Napi::CallbackInfo &info) {

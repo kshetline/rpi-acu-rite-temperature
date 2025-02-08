@@ -5,6 +5,7 @@
 #include <iostream>
 #include <thread>
 #include <vector>
+#include <iostream>
 #if defined(WIN32) || defined(WINDOWS)
 #define NOMINMAX
 #include <Windows.h>
@@ -13,8 +14,8 @@ static int pgfPendingMicros = 0;
 #endif
 
 #ifndef PI_LOW
-#define PI_LOW  GPIOD_CTXLESS_EVENT_FALLING_EDGE
-#define PI_HIGH GPIOD_CTXLESS_EVENT_RISING_EDGE
+#define PI_LOW  GPIOD_CTXLESS_EVENT_CB_FALLING_EDGE
+#define PI_HIGH GPIOD_CTXLESS_EVENT_CB_RISING_EDGE
 #endif
 
 static const int PGF_SHORT_PULSE =        210;
@@ -73,11 +74,11 @@ static void pgfSendPulse(int duration) {
   pgfPinHigh ^= true;
   pgfCurrMicros += duration;
   ts.tv_sec = pgfCurrMicros / 1000000;
-  ts.tv_nsec = pgfCurrMicros * 1000 % 1000000;
+  ts.tv_nsec = pgfCurrMicros * 1000 % 1000000000;
 
   for (auto pcb : pgfCallbacks) {
     if (pcb.pin != 0)
-      pcb.callback(pcb.pin, pgfPinHigh ? PI_LOW : PI_HIGH, &ts, pcb.miscData);
+      pcb.callback(pgfPinHigh ? PI_LOW : PI_HIGH, pcb.pin, &ts, pcb.miscData);
   }
 }
 
@@ -182,4 +183,9 @@ int gpiod_ctxless_event_monitor(const char* device, int event_type, unsigned int
     pgfRunning = false;
 
   return 0;
+}
+
+void fakeGpiodInit() {
+  std::srand((unsigned int) std::chrono::duration_cast<std::chrono::milliseconds>
+    (std::chrono::system_clock::now().time_since_epoch()).count());
 }

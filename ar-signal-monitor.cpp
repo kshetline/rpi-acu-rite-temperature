@@ -126,6 +126,9 @@ static int mod(int x, int y) {
 }
 
 ARTHSM::ArTemperatureHumiditySignalMonitor() {
+#ifdef GPIOD_FAKE
+  fakeGpiodInit();
+#endif
 }
 
 ARTHSM::~ArTemperatureHumiditySignalMonitor() {
@@ -227,7 +230,7 @@ int64_t ARTHSM::micros() {
 }
 
 int64_t ARTHSM::micros(const timespec* ts) {
-  return ts->tv_sec * 1000000 + ts->tv_nsec / 1000;
+  return (int64_t) ts->tv_sec * 1000000 + ts->tv_nsec / 1000;
 }
 
 int ARTHSM::getTiming(int offset) {
@@ -347,7 +350,6 @@ void ARTHSM::signalHasChangedAux(int64_t now, int pinState) {
   lastSignalChange = now;
   timingIndex = (timingIndex + 1) % RING_BUFFER_SIZE;
   timings[timingIndex] = duration;
-  // cout << "pinState: " << pinState << ", duration: " << duration << "\n";
 
   if (pinState == PI_HIGH) {
     int currentIndex = (timingIndex + 1) % RING_BUFFER_SIZE;

@@ -27,4 +27,6 @@ int gpiod_ctxless_event_monitor(const char* device, int event_type, unsigned int
       const char* consumer, const timespec* timeout, gpiod_ctxless_event_poll_cb poll_cb,
       gpiod_ctxless_event_handle_cb event_cb, void* miscData);
 
+void fakeGpiodInit();
+
 #endif
