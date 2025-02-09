@@ -106,7 +106,7 @@ static const int RANK_MID   =  5;
 static const int RANK_LOW   =  2;
 static const int RANK_CHECK =  0;
 
-static const struct timespec TIME_OUT = {999999999, 0};
+static const struct timespec TIME_OUT = {0, 250000000}; // 250 milliseconds
 
 bool ARTHSM::initialSetupDone = false;
 int ARTHSM::nextClientCallbackIndex = 0;
@@ -195,8 +195,16 @@ void ARTHSM::init(int dataPin, PinSystem pinSys) {
 
   lastConnectionCheck = lastSignalChange = micros();
   establishQualityCheck();
-  gpiod_ctxless_event_monitor("gpiochip0", GPIOD_CTXLESS_EVENT_BOTH_EDGES, dataPin, false, "",
-      &TIME_OUT, nullptr, signalHasChanged, this);
+
+  thread([this]() {
+    while (this->dataPin > 0) {
+      gpiod_ctxless_event_monitor("gpiochip0", GPIOD_CTXLESS_EVENT_BOTH_EDGES, this->dataPin, false, "",
+        &TIME_OUT, nullptr, signalHasChanged, this);
+#ifdef GPIOD_FAKE
+      break; // Siumulated gpiod_ctxless_event_monitor isn't a blocking call
+#endif
+    }
+  }).detach();
 }
 
 int ARTHSM::getDataPin() {
@@ -329,7 +337,7 @@ int ARTHSM::signalHasChanged(int eventType, unsigned int dataPin, const timespec
 }
 
 void ARTHSM::signalHasChangedAux(int64_t now, int pinState) {
-  lastConnectionCheck = now;
+  lastConnectionCheck = micros();
 
   if (pinState == lastPinState) {
     signalLocks[dataPin].unlock();
