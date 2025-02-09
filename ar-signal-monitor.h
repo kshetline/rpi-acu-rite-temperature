@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-#ifdef USE_FAKE_GPIO
+#ifdef USE_FAKE_GPIOD
 #include "gpiod-fake.h"
 #else
 #include <gpiod.h>
