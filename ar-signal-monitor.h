@@ -78,7 +78,7 @@ class ArTemperatureHumiditySignalMonitor {
     int64_t lastConnectionCheck = 0;
     std::map<char, SensorData> lastSensorData;
     int lastPinState = -1;
-    int64_t signalChangeBeforeLast = 0;
+
     int64_t lastSignalChange = 0;
     int potentialDataIndex = 0;
     std::promise<void> qualityCheckExitSignal;

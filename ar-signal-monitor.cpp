@@ -106,6 +106,8 @@ static const int RANK_MID   =  5;
 static const int RANK_LOW   =  2;
 static const int RANK_CHECK =  0;
 
+static const struct timespec TIME_OUT = {999999999, 0};
+
 bool ARTHSM::initialSetupDone = false;
 int ARTHSM::nextClientCallbackIndex = 0;
 bool ARTHSM::pinInUse[32] = {false};
@@ -136,9 +138,6 @@ ARTHSM::~ArTemperatureHumiditySignalMonitor() {
     int oldPin = dataPin;
 
     dataPin = -1;
-    gpiod_ctxless_event_monitor("0", GPIOD_CTXLESS_EVENT_BOTH_EDGES, oldPin, false, "",
-      nullptr, nullptr, nullptr, nullptr);
-
     dispatchLocks[oldPin].lock();
     heldDataExitSignal.set_value();
     qualityCheckExitSignal.set_value();
@@ -196,8 +195,8 @@ void ARTHSM::init(int dataPin, PinSystem pinSys) {
 
   lastConnectionCheck = lastSignalChange = micros();
   establishQualityCheck();
-  gpiod_ctxless_event_monitor("0", GPIOD_CTXLESS_EVENT_BOTH_EDGES, dataPin, false, "",
-      nullptr, nullptr, signalHasChanged, this);
+  gpiod_ctxless_event_monitor("gpiochip0", GPIOD_CTXLESS_EVENT_BOTH_EDGES, dataPin, false, "",
+      &TIME_OUT, nullptr, signalHasChanged, this);
 }
 
 int ARTHSM::getDataPin() {
@@ -317,12 +316,14 @@ int ARTHSM::signalHasChanged(int eventType, unsigned int dataPin, const timespec
   if ((eventType != PI_LOW && eventType != PI_HIGH) || !pinInUse[dataPin])
     return 0;
 
-  signalLocks[dataPin].lock();
-
-  if (userData != nullptr && ((ARTHSM*) userData)->dataPin >= 0)
-    ((ARTHSM*) userData)->signalHasChangedAux(micros(tick), eventType);
-  else
-    signalLocks[dataPin].unlock();
+  if (userData != nullptr) {
+    if (((ARTHSM*) userData)->dataPin >= 0) {
+      signalLocks[dataPin].lock();
+      ((ARTHSM*) userData)->signalHasChangedAux(micros(tick), eventType);
+    }
+    else
+      return -1;
+  }
 
   return 0;
 }
@@ -339,14 +340,6 @@ void ARTHSM::signalHasChangedAux(int64_t now, int pinState) {
 
   int duration = (int) min(now - lastSignalChange, (int64_t) 10000);
 
-  // if (duration < TOLERANCE) {
-  //   cout << "rejecting glitch\n";
-  //   lastSignalChange = signalChangeBeforeLast;
-  //   signalLocks[dataPin].unlock();
-  //   return;
-  // }
-
-  signalChangeBeforeLast = lastSignalChange;
   lastSignalChange = now;
   timingIndex = (timingIndex + 1) % RING_BUFFER_SIZE;
   timings[timingIndex] = duration;
@@ -366,7 +359,7 @@ void ARTHSM::signalHasChangedAux(int64_t now, int pinState) {
     bool gotBit = false;
     int t1 = duration;
     int t0 = getTiming(-1);
-
+    
     if (isZeroBit(t0, t1) || isOneBit(t0, t1)) {
       ++sequentialBits;
 
