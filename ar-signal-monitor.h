@@ -119,8 +119,8 @@ class ArTemperatureHumiditySignalMonitor {
     int getInt(int firstBit, int lastBit, bool skipParity);
     int getTiming(int offset);
     bool isSyncAcquired();
-    void processMessage(int64_t frameEndTime);
-    void processMessage(int64_t frameEndTime, int attempt);
+    void processMessage(int64_t frameEndTime, int64_t clockTime);
+    void processMessage(int64_t frameEndTime, int64_t clockTime, int attempt);
     void sendData(const SensorData &sd);
     void setTiming(int offset, int value);
     void signalHasChangedAux(int64_t now, int pinState);

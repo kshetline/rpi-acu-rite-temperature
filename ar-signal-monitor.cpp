@@ -193,7 +193,8 @@ void ARTHSM::init(int dataPin, PinSystem pinSys) {
   pinInUse[dataPin] = true;
   this->dataPin = dataPin;
 
-  lastConnectionCheck = lastSignalChange = micros();
+  lastConnectionCheck = micros();
+  lastSignalChange = -1;
   establishQualityCheck();
 
   thread([this]() {
@@ -336,7 +337,7 @@ int ARTHSM::signalHasChanged(int eventType, unsigned int dataPin, const timespec
   return 0;
 }
 
-void ARTHSM::signalHasChangedAux(int64_t now, int pinState) {
+void ARTHSM::signalHasChangedAux(int64_t tick, int pinState) {
   lastConnectionCheck = micros();
 
   if (pinState == lastPinState) {
@@ -344,23 +345,26 @@ void ARTHSM::signalHasChangedAux(int64_t now, int pinState) {
     return;
   }
 
+  if (lastSignalChange < 0)
+    lastSignalChange = max(tick - 1000, 0L);
+
   lastPinState = pinState;
 
-  int duration = (int) min(now - lastSignalChange, (int64_t) 10000);
+  int duration = (int) min(tick - lastSignalChange, 10000L);
 
-  lastSignalChange = now;
+  lastSignalChange = tick;
   timingIndex = (timingIndex + 1) % RING_BUFFER_SIZE;
   timings[timingIndex] = duration;
 
   if (pinState == PI_HIGH) {
     int currentIndex = (timingIndex + 1) % RING_BUFFER_SIZE;
 
-    if (syncTime2 >= 0 && now > syncTime2 + SYNC_TO_SYNC_TIME + LONG_SYNC_TOL &&
+    if (syncTime2 >= 0 && tick > syncTime2 + SYNC_TO_SYNC_TIME + LONG_SYNC_TOL &&
         findStartOfTriplet() && combineMessages())
     {
       dataIndex = syncIndex2;
       dataEndIndex = currentIndex;
-      processMessage(now);
+      processMessage(tick, lastConnectionCheck);
       syncTime1 = syncTime2 = -1;
     }
 
@@ -373,12 +377,12 @@ void ARTHSM::signalHasChangedAux(int64_t now, int pinState) {
 
       if (sequentialBits == 1) {
         potentialDataIndex = mod(timingIndex - 1, RING_BUFFER_SIZE);
-        frameStartTime = now - t0 - t1;
+        frameStartTime = tick - t0 - t1;
       }
       else if (sequentialBits == MESSAGE_BITS) {
         dataIndex = potentialDataIndex;
         dataEndIndex = mod(timingIndex + 1, RING_BUFFER_SIZE);
-        processMessage(now);
+        processMessage(tick, lastConnectionCheck);
 
         if (sequentialBits != 0) { // Failed as good data?
           --sequentialBits;
@@ -396,15 +400,15 @@ void ARTHSM::signalHasChangedAux(int64_t now, int pinState) {
         ++badBits;
     }
 
-    int messageTime = (int) (now - frameStartTime);
+    int messageTime = (int) (tick - frameStartTime);
 
     if (!gotBit && isSyncAcquired()) {
-      if (syncTime1 < 0 || abs(now - syncTime1 - SYNC_TO_SYNC_TIME) < LONG_SYNC_TOL) {
-        syncTime1 = now;
+      if (syncTime1 < 0 || abs(tick - syncTime1 - SYNC_TO_SYNC_TIME) < LONG_SYNC_TOL) {
+        syncTime1 = tick;
         syncIndex1 = currentIndex;
       }
       else {
-        syncTime2 = now;
+        syncTime2 = tick;
         syncIndex2 = currentIndex;
       }
 
@@ -414,18 +418,18 @@ void ARTHSM::signalHasChangedAux(int64_t now, int pinState) {
           MIN_TRANSITIONS <= changeCount && changeCount <= MAX_TRANSITIONS &&
           MIN_MESSAGE_LENGTH <= messageTime && messageTime <= MAX_MESSAGE_LENGTH) {
         dataEndIndex = currentIndex;
-        processMessage(now);
+        processMessage(tick, lastConnectionCheck);
       }
 
       dataIndex = currentIndex;
       badBits = 0;
-      frameStartTime = now;
+      frameStartTime = tick;
     }
     else if (dataIndex >= 0 && badBits < MAX_BAD_BITS &&
              messageTime > MIN_MESSAGE_LENGTH + SHORT_SYNC_PULSE &&
              messageTime < MAX_MESSAGE_LENGTH) {
       dataEndIndex = timingIndex;
-      processMessage(now);
+      processMessage(tick, lastConnectionCheck);
       dataIndex = -1;
     }
   }
@@ -464,11 +468,11 @@ string getTimestamp() {
   return string(buf);
 }
 
-void ARTHSM::processMessage(int64_t frameEndTime) {
-  processMessage(frameEndTime, 0);
+void ARTHSM::processMessage(int64_t frameEndTime, int64_t clockTime) {
+  processMessage(frameEndTime, clockTime, 0);
 }
 
-void ARTHSM::processMessage(int64_t frameEndTime, int attempt) {
+void ARTHSM::processMessage(int64_t frameEndTime, int64_t clockTime, int attempt) {
   auto integrity = checkDataIntegrity();
   char channel = "?C?BA"[getInt(CHANNEL_FIRST_BIT, CHANNEL_LAST_BIT) + 1];
   string allBits = (debugOutput ? getBitsAsString() + " (" + to_string(frameEndTime - frameStartTime) + u8"µs)" : "");
@@ -494,7 +498,7 @@ void ARTHSM::processMessage(int64_t frameEndTime, int attempt) {
     sd.miscData1 = getInt(MISC_DATA_1_FIRST_BIT, MISC_DATA_1_LAST_BIT);
     sd.miscData2 = getInt(MISC_DATA_2_FIRST_BIT, MISC_DATA_2_LAST_BIT);
     sd.miscData3 = getInt(MISC_DATA_3_FIRST_BIT, MISC_DATA_3_LAST_BIT);
-    sd.collectionTime = frameEndTime;
+    sd.collectionTime = clockTime;
     sd.repeatsCaptured = 1;
 
     int rawHumidity = getInt(HUMIDITY_FIRST_BIT, HUMIDITY_LAST_BIT);
@@ -531,7 +535,7 @@ void ARTHSM::processMessage(int64_t frameEndTime, int attempt) {
 #endif
   }
   else if (attempt == 0 && tryToCleanUpSignal())
-    processMessage(frameEndTime, 1);
+    processMessage(frameEndTime, clockTime, 1);
   else if (debugOutput) {
     thread([allBits TIMES_ARRAY_ARG] {
 #ifdef SHOW_MARGINAL_DATA
@@ -562,7 +566,7 @@ void ARTHSM::processMessage(int64_t frameEndTime, int attempt) {
 
     sd.channel = channel;
     sd.rank = RANK_LOW;
-    sd.collectionTime = frameEndTime;
+    sd.collectionTime = clockTime;
     enqueueSensorData(sd, allBits);
   }
 }
