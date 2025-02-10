@@ -11,9 +11,9 @@ _This library was inspired by work originally done by [Ray Wang](http://rayshobb
 Full functionality requires a Raspberry Pi, but this code can be installed and compiled under MacOS or Windows in such a way that it returns simulated data for testing and development use.
 
 ---
-> **Breaking changes:**
+> **Major change:**
 >
-> As of version 2.0.0, `rpi-acu-rite-temperature` uses the `pigpio` library instead of `wiringPi` for GPIO functionality. This greatly improves the reliability of signal processing, but requires running code with elevated privileges (via `sudo`, or otherwise as root). Pin numbering now defaults to Broadcom GPIO numbering, `wiringPi` numbering is available using `PinSystem.WIRING_PI`, and `PinSystem.SYS` is not available.
+> As of version 3.0.0, `rpi-acu-rite-temperature` uses the `gpiod` library instead of `pigpio` or `wiringPi` for GPIO functionality, as is necessary for Raspberry Pi 5 compatibility. Elevated privileges are no longer required to use this library.
 ---
 
 ### Installation

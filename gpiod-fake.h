@@ -11,6 +11,8 @@
 #define GPIOD_CTXLESS_EVENT_CB_RISING_EDGE  2
 #define GPIOD_CTXLESS_EVENT_CB_FALLING_EDGE 3
 
+#define GPIOD_CTXLESS_EVENT_CB_RET_STOP 1
+
 struct gpiod_ctxless_event_poll_fd {
   int fd;
   bool event;

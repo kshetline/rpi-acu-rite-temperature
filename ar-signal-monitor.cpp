@@ -201,7 +201,7 @@ void ARTHSM::init(int dataPin, PinSystem pinSys) {
       gpiod_ctxless_event_monitor("gpiochip0", GPIOD_CTXLESS_EVENT_BOTH_EDGES, this->dataPin, false, "",
         &TIME_OUT, nullptr, signalHasChanged, this);
 #ifdef GPIOD_FAKE
-      break; // Siumulated gpiod_ctxless_event_monitor isn't a blocking call
+      break; // Simulated gpiod_ctxless_event_monitor isn't a blocking call
 #endif
     }
   }).detach();
@@ -330,7 +330,7 @@ int ARTHSM::signalHasChanged(int eventType, unsigned int dataPin, const timespec
       ((ARTHSM*) userData)->signalHasChangedAux(micros(tick), eventType);
     }
     else
-      return -1;
+      return GPIOD_CTXLESS_EVENT_CB_RET_STOP;
   }
 
   return 0;
@@ -367,7 +367,7 @@ void ARTHSM::signalHasChangedAux(int64_t now, int pinState) {
     bool gotBit = false;
     int t1 = duration;
     int t0 = getTiming(-1);
-    
+
     if (isZeroBit(t0, t1) || isOneBit(t0, t1)) {
       ++sequentialBits;
 
