@@ -10,8 +10,8 @@
         'ar-signal-monitor-node.cpp',
         'ar-signal-monitor.cpp',
         'ar-signal-monitor.h',
-        'pigpio-fake.cpp',
-        'pigpio-fake.h',
+        'gpiod-fake.cpp',
+        'gpiod-fake.h',
         'pin-conversions.cpp',
         'pin-conversions.h'
       ],
@@ -26,18 +26,18 @@
         '<!(node -p "require(\'node-addon-api\').gyp")'
       ],
       'libraries': [
-        '-lpigpio'
+        '-lgpiod'
       ],
       'defines': ['NAPI_CPP_EXCEPTIONS'],
       'conditions': [
         ['OS=="mac"', {
-          'defines': ['USE_FAKE_PIGPIO'],
-          'libraries!': ['-lpigpio'],
+          'defines': ['USE_FAKE_GPIOD'],
+          'libraries!': ['-lgpiod'],
           'xcode_settings': {'GCC_ENABLE_CPP_EXCEPTIONS': 'YES'}
         }],
         ['OS=="win"', {
-          'defines': ['USE_FAKE_PIGPIO', 'WINDOWS'],
-          'libraries!': ['-lpigpio'],
+          'defines': ['USE_FAKE_GPIOD', 'WINDOWS'],
+          'libraries!': ['-lgpiod'],
           'msvs_settings': {
             'VCCLCompilerTool': {
               'ExceptionHandling': 1,
@@ -46,8 +46,8 @@
           }
         }],
         ['OS=="linux"', {
-          'defines': ['<!(node fake-pigpio-check.js)'],
-          'libraries!': ['<!(node fake-pigpio-check.js -l)']
+          'defines': ['<!(node fake-gpiod-check.js)'],
+          'libraries!': ['<!(node fake-gpiod-check.js -l)']
         }]
       ],
     }

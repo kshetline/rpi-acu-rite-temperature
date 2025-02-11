@@ -67,7 +67,7 @@ static void callBackHandler(ARTHSM::SensorData sensorData, void *miscData) {
   if (napi_acquire_threadsafe_function(*cbi->tsfn) == napi_ok)
     napi_call_threadsafe_function(*cbi->tsfn, sensorDataCopy, napi_tsfn_blocking);
   else
-    delete sensorDataCopy;
+    free(sensorDataCopy);
 }
 
 Napi::Value addSensorDataListener(const Napi::CallbackInfo &info) {
@@ -148,7 +148,7 @@ void removeSensorDataListener(const Napi::CallbackInfo &info) {
 
     // Hack alert! If I don't wait to delete this, there's a crash, but I don't know if there's a good signal to wait for.
     thread([tsfn]() {
-      this_thread::sleep_for(std::chrono::milliseconds(250));
+      this_thread::sleep_for(chrono::milliseconds(250));
       delete tsfn;
     }).detach();
 

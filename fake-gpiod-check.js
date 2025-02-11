@@ -1,5 +1,5 @@
-let defineStr = 'USE_FAKE_PIGPIO';
-let libRemove = '-lpigpio';
+let defineStr = 'USE_FAKE_GPIOD';
+let libRemove = '-gpiod';
 
 if (process.platform === 'linux') {
   const fs = require('fs');
@@ -10,7 +10,7 @@ if (process.platform === 'linux') {
 
       for (const line of lines) {
         if (/\bModel\s*:\s*Raspberry Pi\b/i.test(line)) {
-          defineStr = 'USE_REAL_PIGPIO';
+          defineStr = 'USE_REAL_GPIOD';
           libRemove = '';
           break;
         }

@@ -137,7 +137,7 @@ enum GpioLayout {
     UNKNOWN
 };
 
-#ifdef USE_FAKE_PIGPIO
+#ifdef USE_FAKE_GPIOD
 static GpioLayout gpioLayout = GpioLayout::LAYOUT_2;
 static bool supportPhysPins = true;
 #else

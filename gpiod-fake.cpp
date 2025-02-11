@@ -1,18 +1,24 @@
-#include "pigpio-fake.h"
+#include "gpiod-fake.h"
 
 #include <algorithm>
 #include <chrono>
 #include <iostream>
 #include <thread>
 #include <vector>
+#include <iostream>
 #if defined(WIN32) || defined(WINDOWS)
 #define NOMINMAX
 #include <Windows.h>
-#include <synchapi.h>
+#include <sync hapi.h>
 static int pgfPendingMicros = 0;
 #endif
 
-#define PGF_SUPPRESS_UNUSED_WARN(fn) void *_pgf_suw_##fn = ((void *) fn);
+#ifndef PI_LOW
+#define PI_LOW  GPIOD_CTXLESS_EVENT_CB_FALLING_EDGE
+#define PI_HIGH GPIOD_CTXLESS_EVENT_CB_RISING_EDGE
+#endif
+
+using namespace std;
 
 static const int PGF_SHORT_PULSE =        210;
 static const int PGF_LONG_PULSE =         401;
@@ -30,12 +36,12 @@ static int pgfLastHumidity[] = { 50, 40, 30 };
 static int pgfLastTemp[] = { 1020, 1120, 1220 };
 
 typedef struct {
-  int pin;
-  void (*callback)(int dataPin, int level, unsigned int tick, void *userData);
+  unsigned int pin;
+  gpiod_ctxless_event_handle_cb callback;
   void *miscData;
 } PGF_PinAlert;
 
-static std::vector<PGF_PinAlert> pgfCallbacks;
+static vector<PGF_PinAlert> pgfCallbacks;
 
 static void pgfMicroSleep(int micros) {
 #if defined(WIN32) || defined(WINDOWS)
@@ -47,7 +53,7 @@ static void pgfMicroSleep(int micros) {
     SleepEx(hundredths * 10, false);
   }
 #else
-  std::this_thread::sleep_for(std::chrono::microseconds(micros));
+  this_thread::sleep_for(chrono::microseconds(micros));
 #endif
 }
 
@@ -64,13 +70,17 @@ static int pgfApplyParity(int b) {
 }
 
 static void pgfSendPulse(int duration) {
+  struct timespec ts;
+
   pgfMicroSleep(duration);
   pgfPinHigh ^= true;
   pgfCurrMicros += duration;
+  ts.tv_sec = pgfCurrMicros / 1000000;
+  ts.tv_nsec = pgfCurrMicros * 1000 % 1000000000;
 
   for (auto pcb : pgfCallbacks) {
     if (pcb.pin != 0)
-      pcb.callback(pcb.pin, pgfPinHigh ? PI_LOW : PI_HIGH, pgfCurrMicros, pcb.miscData);
+      pcb.callback(pgfPinHigh ? PI_LOW : PI_HIGH, pcb.pin, &ts, pcb.miscData);
   }
 }
 
@@ -102,8 +112,8 @@ static void pgfSendForChannel(int channel, int index) {
     pgfSendPulse(PGF_SHORT_SYNC_PULSE);
 
   int bytes[7] = { 0 };
-  int humidity =  std::min(std::max(pgfLastHumidity[index] + std::rand() % 3 - 1, 45 - index * 10), 55 - index * 10);
-  int temp = std::min(std::max(pgfLastTemp[index] + std::rand() % 3 - 1, 980 + index * 100), 1060 + index * 100);
+  int humidity =  min(max(pgfLastHumidity[index] + rand() % 3 - 1, 45 - index * 10), 55 - index * 10);
+  int temp = min(max(pgfLastTemp[index] + rand() % 3 - 1, 980 + index * 100), 1060 + index * 100);
 
   pgfLastHumidity[index] = humidity;
   pgfLastTemp[index] = temp;
@@ -119,9 +129,9 @@ static void pgfSendForChannel(int channel, int index) {
   bytes[6] &= 0xFF;
 
   // Occasionally toss in a random bad bit, with channel A being the noisiest.
-  if (std::rand() % (index == 0 ? 3 : 10) == 0) {
+  if (rand() % (index == 0 ? 3 : 10) == 0) {
     // Increase odds for bad checksum over bad parity, and don't mess up channel bits.
-    int badBit = 2 + std::rand() % 78;
+    int badBit = 2 + rand() % 78;
     badBit = (badBit < 55 ? badBit : 48 + badBit % 8);
     bytes[badBit / 8] ^= 0x80 >> (badBit % 8);
   }
@@ -137,56 +147,35 @@ static void pgfSendForChannel(int channel, int index) {
 }
 
 static void pgfSendSignals() {
-  std::thread([]() {
+  thread([]() {
     while (pgfRunning) {
       for (int i = 0; i < 3; ++i) {
         if (i != 2 || pgfCurrMicros < 150'000'000) // Channel C cuts out after 2.5 minutes
           pgfSendForChannel(pgfChannels[i], i);
       }
 
-      std::this_thread::sleep_for(std::chrono::seconds(PGF_MESSAGE_RATE));
+      this_thread::sleep_for(chrono::seconds(PGF_MESSAGE_RATE));
       pgfCurrMicros += PGF_MESSAGE_RATE * 1000000;
     }
   }).detach();
 }
 
-int gpioInitialise() {
-  std::srand((unsigned int) std::chrono::duration_cast<std::chrono::milliseconds>
-    (std::chrono::system_clock::now().time_since_epoch()).count());
 
-  return 0;
-}
-PGF_SUPPRESS_UNUSED_WARN(gpioInitialise)
-
-void gpioSetMode(int dataPin, int mode) {
-  // do nothing
-}
-PGF_SUPPRESS_UNUSED_WARN(gpioSetMode)
-
-void gpioGlitchFilter(int pin, int time) {
-  // do nothing
-}
-PGF_SUPPRESS_UNUSED_WARN(gpioGlitchFilter)
-
-void gpioTerminate() {
-  // do nothing
-}
-PGF_SUPPRESS_UNUSED_WARN(gpioTerminate)
-
-void gpioSetAlertFuncEx(int dataPin,
-    void (*callback)(int dataPin, int level, unsigned int tick, void *userData), void *miscData) {
-  auto match = std::find_if(pgfCallbacks.begin(), pgfCallbacks.end(),
+int gpiod_ctxless_event_monitor(const char* device, int event_type, unsigned int dataPin, bool active_low,
+    const char* consumer, const timespec* timeout, gpiod_ctxless_event_poll_cb poll_cb,
+    gpiod_ctxless_event_handle_cb event_cb, void* miscData) {
+  auto match = find_if(pgfCallbacks.begin(), pgfCallbacks.end(),
     [dataPin](PGF_PinAlert pcb) { return pcb.pin == dataPin; });
 
-  if (callback == nullptr) {
+  if (event_cb == nullptr) {
     if (match != pgfCallbacks.end())
       pgfCallbacks.erase(match);
   }
   else if (match != pgfCallbacks.end())
     throw "Pin callback already in use";
 
-  if (callback != nullptr)
-    pgfCallbacks.push_back(PGF_PinAlert { dataPin, callback, miscData });
+  if (event_cb != nullptr)
+    pgfCallbacks.push_back(PGF_PinAlert { dataPin, event_cb, miscData });
 
   if (!pgfRunning && pgfCallbacks.size() > 0) {
     pgfRunning = true;
@@ -194,15 +183,11 @@ void gpioSetAlertFuncEx(int dataPin,
   }
   else if (pgfRunning && pgfCallbacks.size() == 0)
     pgfRunning = false;
+
+  return 0;
 }
 
-void gpioSetAlertFunc(int dataPin,
-    void (*callback)(int dataPin, int level, unsigned int tick, void *userData)) {
-  gpioSetAlertFuncEx(dataPin, callback, nullptr);
+void fakeGpiodInit() {
+  srand((unsigned int) chrono::duration_cast<chrono::milliseconds>
+    (chrono::system_clock::now().time_since_epoch()).count());
 }
-PGF_SUPPRESS_UNUSED_WARN(gpioSetAlertFunc)
-
-uint32_t gpioTick() {
-  return pgfCurrMicros;
-}
-PGF_SUPPRESS_UNUSED_WARN(gpioTick)
