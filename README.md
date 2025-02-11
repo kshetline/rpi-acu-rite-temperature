@@ -8,12 +8,12 @@ _This library was inspired by work originally done by [Ray Wang](http://rayshobb
 
 `rpi-acu-rite-temperature` can be used for JavaScript/TypeScript programming in a Node.js environment, or the included C++ code can be used directly. It is the JavaScript/TypeScript interface that is documented here.
 
-Full functionality requires a Raspberry Pi, but this code can be installed and compiled under MacOS or Windows in such a way that it returns simulated data for testing and development use.
+Full functionality requires a Raspberry Pi, but this code can be installed and compiled under macOS or Windows in such a way that it returns simulated data for testing and development use.
 
 ---
 > **Major change:**
 >
-> As of version 3.0.0, `rpi-acu-rite-temperature` uses the `gpiod` library instead of `pigpio` or `wiringPi` for GPIO functionality, as is necessary for Raspberry Pi 5 compatibility. Elevated privileges are no longer required to use this library.
+> As of version 3.0.0, `rpi-acu-rite-temperature` uses the `gpiod` library instead of `pigpio` (or, even earlier in the history of this library, `wiringPi`) for GPIO functionality, as is necessary for Raspberry Pi 5 compatibility. Elevated privileges are no longer required to use this library.
 ---
 
 ### Installation
@@ -55,7 +55,7 @@ Even after a dead air indication has been received, and before signal has been r
 
 `rawTemp` will be `undefined`, and `tempCelsius` and `tempFahrenheit` as well, if the signal was decoded with a value outside of the range ±60°C.
 
-`signalQuality` is measured over a five minute window, and may register low even for a strong signal until a full five minutes have passed.
+`signalQuality` is measured over a five-minute window, and may register low even for a strong signal until a full five minutes have passed.
 
 It's best for `validChecksum` to be `true`, but the data provided has at least been validated by three parity bits even if the checksum doesn't come out right. When a weak signal makes updates infrequent, it may be possible, with care, to use somewhat questionable data.
 

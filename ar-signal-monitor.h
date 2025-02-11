@@ -8,12 +8,14 @@
 #include <utility>
 #include <vector>
 
-#ifdef USE_FAKE_GPIOD
+#if defined(USE_FAKE_GPIOD) || defined(__APPLE__) || defined(WIN32) || defined(WINDOWS)
 #include "gpiod-fake.h"
 #else
 #include <gpiod.h>
 #endif
 #include "pin-conversions.h"
+
+namespace std { // No, I don't want to indent everything inside this.
 
 static const int RING_BUFFER_SIZE = 512;
 
@@ -57,33 +59,33 @@ class ArTemperatureHumiditySignalMonitor {
 
     typedef void (*VoidFunctionPtr)(SensorData sensorData, void *miscData);
     typedef void *VoidPtr;
-    typedef std::pair<VoidFunctionPtr, VoidPtr> ClientCallback;
-    typedef std::pair<int64_t, int> TimeAndQuality;
+    typedef pair<VoidFunctionPtr, VoidPtr> ClientCallback;
+    typedef pair<int64_t, int> TimeAndQuality;
 
     int badBits = 0;
     int baseIndex = 0;
     int64_t baseTime = -1;
-    std::map<int, ClientCallback> clientCallbacks;
+    map<int, ClientCallback> clientCallbacks;
     int dataEndIndex = 0;
     int dataIndex = -1;
     int dataPin = -1;
     bool debugOutput = false;
     int64_t frameStartTime = 0;
     SensorData heldData;
-    std::string heldBits;
-    std::future<void> heldDataControl;
-    std::promise<void> heldDataExitSignal;
+    string heldBits;
+    future<void> heldDataControl;
+    promise<void> heldDataExitSignal;
     bool holdingRecentData = false;
-    std::thread *holdThread = nullptr;
+    thread *holdThread = nullptr;
     int64_t lastConnectionCheck = 0;
-    std::map<char, SensorData> lastSensorData;
+    map<char, SensorData> lastSensorData;
     int lastPinState = -1;
 
     int64_t lastSignalChange = 0;
     int potentialDataIndex = 0;
-    std::promise<void> qualityCheckExitSignal;
-    std::future<void> qualityCheckLoopControl;
-    std::map<char, std::vector<TimeAndQuality>> qualityTracking;
+    promise<void> qualityCheckExitSignal;
+    future<void> qualityCheckLoopControl;
+    map<char, vector<TimeAndQuality>> qualityTracking;
     int sequentialBits = 0;
     int syncIndex1 = 0;
     int syncIndex2 = 0;
@@ -114,7 +116,7 @@ class ArTemperatureHumiditySignalMonitor {
     void establishQualityCheck();
     bool findStartOfTriplet();
     int getBit(int offset);
-    std::string getBitsAsString();
+    string getBitsAsString();
     int getInt(int firstBit, int lastBit);
     int getInt(int firstBit, int lastBit, bool skipParity);
     int getTiming(int offset);
@@ -136,3 +138,4 @@ class ArTemperatureHumiditySignalMonitor {
 };
 
 #endif
+}

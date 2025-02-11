@@ -27,17 +27,20 @@
 
 #include "ar-signal-monitor.h"
 
+#include <algorithm>
+#include <chrono>
+#include <cstdio>
+#include <ctgmath>
+#include <ctime>
 #include <functional>
 #include <iomanip>
 #include <iostream>
 #include "pin-conversions.h"
+#include <stdio.h>
 #include <stdlib.h>
-#include <ctgmath>
 #include <thread>
-#include <ctime>
 #if defined(WIN32) || defined(WINDOWS)
 #include <Windows.h>
-#include <cstdio>
 #endif
 
 using namespace std;
@@ -346,11 +349,11 @@ void ARTHSM::signalHasChangedAux(int64_t tick, int pinState) {
   }
 
   if (lastSignalChange < 0)
-    lastSignalChange = max(tick - 1000, 0L);
+    lastSignalChange = max(tick - 1000, (int64_t) 0);
 
   lastPinState = pinState;
 
-  int duration = (int) min(tick - lastSignalChange, 10000L);
+  int duration = (int) min(tick - lastSignalChange, (int64_t) 10000);
 
   lastSignalChange = tick;
   timingIndex = (timingIndex + 1) % RING_BUFFER_SIZE;
@@ -463,7 +466,10 @@ string getTimestamp() {
   time_t now_tt = chrono::system_clock::to_time_t(now);
 
   strftime(buf, 32, "%R:%S.", localtime(&now_tt));
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated"
   sprintf(&buf[9], "%03d", (int) ((chrono::duration_cast<chrono::milliseconds>(now.time_since_epoch())).count() % 1000));
+#pragma GCC diagnostic pop
 
   return string(buf);
 }
@@ -622,7 +628,7 @@ void ARTHSM::enqueueSensorData(SensorData sd, string bitString) {
     heldDataExitSignal = promise<void>();
     heldDataControl = heldDataExitSignal.get_future();
     holdThread = new thread([this]() {
-      heldDataControl.wait_for(std::chrono::microseconds(MESSAGE_HOLD_TIME));
+      heldDataControl.wait_for(chrono::microseconds(MESSAGE_HOLD_TIME));
       queueLocks[dataPin].lock();
       holdingRecentData = false;
       heldData.signalQuality = updateSignalQuality(heldData.channel, heldData.collectionTime,
@@ -907,8 +913,8 @@ void ARTHSM::establishQualityCheck() {
     int divCount = 0;
 
     while (qualityCheckLoopControl.wait_for(
-           std::chrono::microseconds(SIGNAL_QUALITY_CHECK_RATE / SIGNAL_QUALITY_CHECK_DIVS)) ==
-           std::future_status::timeout) {
+           chrono::microseconds(SIGNAL_QUALITY_CHECK_RATE / SIGNAL_QUALITY_CHECK_DIVS)) ==
+           future_status::timeout) {
       int64_t now = micros();
 
       if (lastConnectionCheck + DEAD_AIR_LIMIT < now) {

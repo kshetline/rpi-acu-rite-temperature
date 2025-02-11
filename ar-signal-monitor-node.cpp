@@ -148,7 +148,7 @@ void removeSensorDataListener(const Napi::CallbackInfo &info) {
 
     // Hack alert! If I don't wait to delete this, there's a crash, but I don't know if there's a good signal to wait for.
     thread([tsfn]() {
-      this_thread::sleep_for(std::chrono::milliseconds(250));
+      this_thread::sleep_for(chrono::milliseconds(250));
       delete tsfn;
     }).detach();
 
