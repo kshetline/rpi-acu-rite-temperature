@@ -4,7 +4,7 @@
  * Copyright 2020-2025 Kerry Shetline <kerry@shetline.com>
  *
  * This code is derived from code originally written by Ray Wang
- * (Rayshobby LLC), http://rayshobby.net/?p=8998
+ * (Rayshobby LLC), http://rayshobby.net/?p=8998, https://pastecode.io/s/78wxrak2
  * Redesigned in 2025 to work with libgpiod instead of pigpio.
  *
  * MIT
